@@ -45,7 +45,7 @@ Open the Vercel URL in Safari > Share > Add to Home Screen. Mic needs Siri enabl
 - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`: public, safe in the browser (Row Level Security protects data).
 
 ## Tests
-`npm test` runs unit + mocked API tests (no network, no charges). `npm run build` type-checks and builds.
+`npm test` runs unit + mocked API tests (no network, no charges). `npm run build` type-checks and builds. `npm i -D playwright && npx playwright install chromium && npm run e2e` runs the full browser test (fake mic, mocked backend) after a build.
 
 ## Known limits
 - iPhone speech recognition is less reliable than Chrome on Windows, and can fail inside the home-screen app. A typing fallback appears if voice input fails.

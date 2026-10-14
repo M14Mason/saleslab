@@ -6,7 +6,8 @@
     "test": "vitest run",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "e2e": "node tests/e2e.mjs"
   },
   "keywords": [],
   "author": "",

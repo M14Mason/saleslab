@@ -44,12 +44,15 @@ export default function Practice() {
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loadMsg, setLoadMsg] = useState("");
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionIdState] = useState<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const setSessionId = (id: string) => { sessionIdRef.current = id; setSessionIdState(id); };
   const [outcome, setOutcome] = useState<"deal" | "no_deal" | null>(null);
   const [resumable, setResumable] = useState<{ id: string; difficulty: Difficulty } | null>(null);
   const [typed, setTyped] = useState("");
   const [muted, setMuted] = useState(false);
   const [voiceInOk, setVoiceInOk] = useState(sttSupported());
+  const voiceOkRef = useRef(voiceInOk);
 
   // Refs mirror state so async callbacks never read stale values.
   const turnsRef = useRef<Turn[]>([]);
@@ -121,10 +124,10 @@ export default function Practice() {
     setOrbS("speaking");
     await speaker.current?.speak(text);
     setOrbS("idle");
-    if (settings.autoListen && voiceInOk && !outcomeRef.current) void listen();
+    if (settings.autoListen && voiceOkRef.current && !outcomeRef.current) void listen(true);
   }
 
-  async function listen() {
+  async function listen(auto = false) {
     if (orbRef.current === "listening" || orbRef.current === "thinking") return;
     speaker.current?.stop();
     setError(null);
@@ -140,7 +143,9 @@ export default function Practice() {
     } catch (err) {
       setOrbS("idle");
       const code = err as SttError;
-      if (code === "denied" || code === "unsupported") setVoiceInOk(false);
+      // iPhone blocks auto-started mic without a tap. Don't treat that as a real denial.
+      if (auto && code !== "unsupported") { setError("Tap Talk to answer."); return; }
+      if (code === "denied" || code === "unsupported") { voiceOkRef.current = false; setVoiceInOk(false); }
       setError(STT_HELP[code] ?? STT_HELP.other);
     } finally {
       stopListen.current = null;
@@ -148,7 +153,8 @@ export default function Practice() {
   }
 
   async function send(text: string, retry = false) {
-    if (!sessionId) return;
+    const sessionId = sessionIdRef.current;
+    if (!sessionId) { setOrbS("idle"); return; }
     if (!retry) setTurnsS([...turnsRef.current, { role: "seller", text }]);
     const idx = turnsRef.current.length - 1; // index of this seller turn
     setOrbS("thinking");
@@ -159,7 +165,7 @@ export default function Practice() {
       setOrbS("speaking");
       await speaker.current?.speak(res.reply);
       setOrbS("idle");
-      if (!res.outcome && settings.autoListen && voiceInOk && idx + 2 < MAX_TURNS * 2) void listen();
+      if (!res.outcome && settings.autoListen && voiceOkRef.current && idx + 2 < MAX_TURNS * 2) void listen();
     } catch (e) {
       setOrbS("idle");
       setError(`${(e as Error).message} Tap "Retry" to resend (you won't be charged twice).`);
@@ -169,6 +175,7 @@ export default function Practice() {
   const pendingRetry = useRef<string | null>(null);
 
   async function end() {
+    const sessionId = sessionIdRef.current;
     if (!sessionId) return;
     if (!outcomeRef.current && turnsRef.current.length > 0 && !confirm("End the call and get coached?")) return;
     stopListen.current?.();
@@ -268,7 +275,7 @@ export default function Practice() {
         {!outcome && voiceInOk && (
           <button
             aria-label={orb === "listening" ? "Stop and send" : "Talk"}
-            onClick={() => (orb === "listening" ? stopListen.current?.() : listen())}
+            onClick={() => (orb === "listening" ? stopListen.current?.() : listen(false))}
             disabled={orb === "thinking"}
             className={`w-20 h-20 rounded-full flex items-center justify-center text-ink font-semibold transition ${orb === "listening" ? "bg-bad scale-110" : "bg-gold"}`}
           >
