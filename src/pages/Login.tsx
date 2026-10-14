@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { supabase, deviceMode } from "../lib/supabase";
+import { setKey, notifyAuth } from "../lib/local";
 import { useAuth } from "../lib/auth";
 
 export default function Login() {
@@ -12,6 +13,7 @@ export default function Login() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   if (session) return <Navigate to={loc.state?.from ?? "/home"} replace />;
+  if (deviceMode) return <KeyEntry />;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -45,6 +47,22 @@ export default function Login() {
           <button type="button" onClick={() => setMode(mode === "up" ? "in" : "up")}>{mode === "up" ? "Have an account?" : "New here?"}</button>
           <button type="button" onClick={() => setMode("reset")}>Forgot password</button>
         </div>
+      </form>
+    </div>
+  );
+}
+
+function KeyEntry() {
+  const [k, setK] = useState("");
+  return (
+    <div className="min-h-dvh safe flex items-center justify-center px-5">
+      <form className="card p-6 w-full max-w-sm flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); setKey(k); notifyAuth(); }}>
+        <h1 className="font-display text-3xl mb-1">Add your Claude key</h1>
+        <p className="text-sm text-mute">Get one at console.anthropic.com (account holder must be 18+). It's saved only in this browser and sent only to Anthropic.</p>
+        <label className="text-sm text-mute" htmlFor="key">API key</label>
+        <input id="key" type="password" autoComplete="off" placeholder="sk-ant-..." required value={k} onChange={(e) => setK(e.target.value)} />
+        <p className="text-xs text-bad">Anyone using this device can spend on your key. Set a monthly spend limit in the Anthropic console.</p>
+        <button className="btn btn-gold mt-1" disabled={!k.trim().startsWith("sk-ant-")}>Save and start</button>
       </form>
     </div>
   );

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, deviceMode } from "../lib/supabase";
 import { useAuth } from "../lib/auth";
 import { VOICES, type VoiceId } from "../speech/tts";
 import type { Difficulty } from "../../shared/wolf";
@@ -52,12 +52,12 @@ export default function Settings() {
       </section>
 
       <section className="card p-4 flex flex-col gap-3">
-        <p className="text-sm text-mute">Signed in as {session?.user.email}</p>
-        <form className="flex gap-2" onSubmit={async (e) => { e.preventDefault(); const { error } = await supabase.auth.updateUser({ password: pw }); setMsg(error ? error.message : "Password updated."); setPw(""); }}>
+        <p className="text-sm text-mute">{deviceMode ? "Device mode: history and your key are stored only in this browser." : `Signed in as ${session?.user.email}`}</p>
+        {!deviceMode && <form className="flex gap-2" onSubmit={async (e) => { e.preventDefault(); const { error } = await supabase.auth.updateUser({ password: pw }); setMsg(error ? error.message : "Password updated."); setPw(""); }}>
           <input type="password" minLength={8} placeholder="New password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
           <button className="btn btn-ghost shrink-0" disabled={pw.length < 8}>Update</button>
-        </form>
-        <button className="btn btn-ghost" onClick={() => supabase.auth.signOut()}>Sign out</button>
+        </form>}
+        <button className="btn btn-ghost" onClick={() => supabase.auth.signOut()}>{deviceMode ? "Remove API key from this device" : "Sign out"}</button>
       </section>
 
       <section className="card p-4 flex flex-col gap-3 text-sm">

@@ -1,4 +1,5 @@
-import { supabase } from "./supabase";
+import { supabase, deviceMode } from "./supabase";
+import { localCoach, localConverse } from "./local";
 import type { CoachReport } from "../../shared/schemas";
 
 async function call<T>(path: string, body: unknown, timeoutMs: number): Promise<T> {
@@ -27,10 +28,10 @@ async function call<T>(path: string, body: unknown, timeoutMs: number): Promise<
 }
 
 export const converse = (sessionId: string, idx: number, text: string) =>
-  call<{ reply: string; outcome: "deal" | "no_deal" | null }>("/api/converse", { sessionId, idx, text }, 30_000);
+  deviceMode ? localConverse(sessionId, idx, text) : call<{ reply: string; outcome: "deal" | "no_deal" | null }>("/api/converse", { sessionId, idx, text }, 30_000);
 
 export const coach = (sessionId: string) =>
-  call<{ report: CoachReport; cached: boolean }>("/api/coach", { sessionId }, 90_000);
+  deviceMode ? localCoach(sessionId) : call<{ report: CoachReport; cached: boolean }>("/api/coach", { sessionId }, 90_000);
 
 export type SessionRow = {
   id: string; difficulty: "easy" | "medium" | "hard"; status: string;

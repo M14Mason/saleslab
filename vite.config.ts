@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  base: process.env.PAGES ? "/saleslab/" : "/",
   plugins: [
     react(),
     tailwindcss(),
@@ -17,7 +18,8 @@ export default defineConfig({
         theme_color: "#0b0b0d",
         background_color: "#0b0b0d",
         display: "standalone",
-        start_url: "/",
+        start_url: "./",
+        scope: "./",
         icons: [
           { src: "icon-192.png", sizes: "192x192", type: "image/png" },
           { src: "icon-512.png", sizes: "512x512", type: "image/png" },
