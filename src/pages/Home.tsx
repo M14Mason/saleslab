@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { lazy, Suspense, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useData } from "../lib/db";
 import { isMock } from "../lib/claude";
@@ -7,6 +7,7 @@ import { useEntrance } from "../lib/useGsap";
 import { dailyScenario, CATEGORY_LABEL } from "../../shared/scenarios";
 import { Bar, Radar, Trend } from "../components/Charts";
 import { Empty } from "../components/ui";
+const GLCanvas = lazy(() => import("../gl/GLCanvas"));
 
 export default function Home() {
   const { sessions, settings } = useData();
@@ -34,8 +35,10 @@ export default function Home() {
 
   return (
     <div ref={ref} className="flex flex-col gap-5">
-      <header data-anim className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+      <header data-anim className="relative overflow-hidden rounded-[22px] border border-line flex flex-wrap items-end justify-between gap-3 p-5 md:p-7 min-h-44">
+        <Suspense fallback={null}><GLCanvas variant="ribbons" className="absolute inset-0 w-full h-full" scale={0.5} fps={30} /></Suspense>
+        <div className="absolute inset-0 bg-gradient-to-t from-bg/85 via-bg/40 to-transparent" aria-hidden />
+        <div className="relative">
           <h1 className="text-4xl md:text-5xl font-extrabold">{greet}. Ready to sell?</h1>
           <p className="text-mute mt-1">
             {v.streak > 0 ? `${v.streak}-day streak. ` : ""}
@@ -43,7 +46,7 @@ export default function Home() {
             {isMock() && " Demo mode: scripted buyer, no AI."}
           </p>
         </div>
-        <Link to="/practice" className="btn btn-primary">Start a call</Link>
+        <Link to="/practice" className="btn btn-primary relative">Start a call</Link>
       </header>
 
       {v.unfinished && (

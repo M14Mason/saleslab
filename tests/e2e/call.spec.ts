@@ -171,3 +171,94 @@ test("timing: buyer starts speaking quickly after you stop", async ({ page }) =>
   console.log(`time to first audio (mocked API, app overhead only): ${ms}ms`);
   expect(ms).toBeLessThan(1500);
 });
+
+test("round 2: reloading mid-call offers Resume instead of starting a second call", async ({ page }) => {
+  const api = new MockClaude();
+  api.buyer = ["Go on, I'm listening.", "Still listening."];
+  await api.install(page);
+  await fakeVoice(page, { lines: ["What do you sign with today?"] });
+  await signedIn(page);
+  await startCall(page);
+  await expect(page.getByText("Go on, I'm listening.")).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/resume=/);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Pick up where you left off" })).toBeVisible();
+  const count = await page.evaluate(() => JSON.parse(localStorage.getItem("saleslab.v2")!).sessions.length);
+  expect(count).toBe(1);
+});
+
+test("round 2: the end-call dialog keeps focus while the call timer ticks", async ({ page, isMobile }) => {
+  test.skip(Boolean(isMobile), "keyboard focus check");
+  const api = new MockClaude();
+  await api.install(page);
+  await fakeVoice(page);
+  await signedIn(page, { autoListen: false });
+  await startCall(page);
+  await page.getByRole("button", { name: "End", exact: true }).click();
+  await page.keyboard.press("Tab"); // move from "Keep going" to "End call"
+  await page.waitForTimeout(1200);   // several timer ticks re-render the page
+  await expect(page.getByRole("button", { name: "End call" })).toBeFocused();
+});
+
+test("round 2: time limit stops the buyer and asks you to end", async ({ page }) => {
+  const api = new MockClaude();
+  api.buyer = [{ delayMs: 5000, text: "This should never be spoken." }];
+  await api.install(page);
+  await fakeVoice(page, { lines: ["Quick question for you."] });
+  await signedIn(page);
+  await page.addInitScript(() => {
+    // Shrink the 2-minute limit to 3 seconds for the test.
+    const orig = window.setInterval;
+    let shifted = false;
+    Date.now = ((n) => () => n() + (shifted ? 118_000 : 0))(Date.now.bind(Date));
+    setTimeout(() => { shifted = true; }, 2500);
+    window.setInterval = orig;
+  });
+  await page.goto("#/practice/wolf-pen");
+  await page.getByRole("radio", { name: "2 min" }).click();
+  await page.getByRole("button", { name: "Start call" }).click();
+  await expect(page.getByText("Time's up. End the call to get coached.")).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(5500);
+  expect((await spoken(page)).join(" ")).not.toContain("never be spoken");
+});
+
+test("round 2: typing mode never turns the mic on by itself", async ({ page }) => {
+  const api = new MockClaude();
+  api.buyer = ["Typed, got it. What else?"];
+  await api.install(page);
+  await fakeVoice(page, { lines: [] });
+  await signedIn(page, { autoListen: true });
+  await startCall(page);
+  await page.getByRole("button", { name: "Type" }).click();
+  const before = await page.evaluate(() => (window as unknown as { __recStarts: number }).__recStarts);
+  await page.getByLabel("Type your line").fill("When did you last sign a contract?");
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(page.getByText("Typed, got it. What else?")).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(800);
+  const after = await page.evaluate(() => (window as unknown as { __recStarts: number }).__recStarts);
+  expect(after).toBe(before);
+  await expect(page.getByText("Your turn. Type your line.")).toBeVisible();
+});
+
+test("round 2: opening an old ungraded call never spends credit by itself", async ({ page }) => {
+  const api = new MockClaude();
+  await api.install(page);
+  await fakeVoice(page);
+  await signedIn(page);
+  await page.addInitScript(() => {
+    const d = JSON.parse(localStorage.getItem("saleslab.v2")!);
+    if (d.sessions.length) return;
+    const old = new Date(Date.now() - 3 * 86400000).toISOString();
+    d.sessions.push({ id: "old1", scenarioId: "wolf-pen", scenario: null, difficulty: "medium", mode: "practice", liveCoaching: false, surprise: false, timeLimitSec: null,
+      status: "ended", outcome: null, turns: [{ role: "seller", text: "Buy my pen", at: 0 }], startedAt: old, endedAt: old, durationSec: 20,
+      grading: { status: "idle", error: null, attempts: 0, ms: null }, report: null, metrics: null, perf: { firstAudioMs: [], firstTokenMs: [] } });
+    localStorage.setItem("saleslab.v2", JSON.stringify(d));
+  });
+  await page.goto("#/session/old1");
+  await expect(page.getByRole("heading", { name: "Not graded yet" })).toBeVisible();
+  await page.waitForTimeout(800);
+  expect(api.calls.grade).toBe(0);
+  await page.getByRole("button", { name: "Get coached" }).click();
+  await expect(page.getByRole("img", { name: /Score 72/ })).toBeVisible({ timeout: 15_000 });
+  expect(api.calls.grade).toBe(1);
+});

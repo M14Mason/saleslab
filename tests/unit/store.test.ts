@@ -75,3 +75,29 @@ function base(id: string, startedAt = new Date().toISOString()) {
     perf: { firstAudioMs: [], firstTokenMs: [] },
   };
 }
+
+describe("data repair (round 2)", () => {
+  it("repairs sessions with a missing scenario or bad turns instead of crashing", () => {
+    localStorage.setItem("saleslab.v2", JSON.stringify({ version: 2, settings: {}, customScenarios: [], achievements: {},
+      sessions: [{ id: "x", scenarioId: "exec-cfo", scenario: null, turns: [null, { role: "seller", text: "hi" }] }, null, { nope: 1 }] }));
+    db._reset();
+    const s = db.sessions();
+    expect(s).toHaveLength(1);
+    expect(s[0].scenario.id).toBe("exec-cfo");
+    expect(s[0].turns).toHaveLength(1);
+    expect(s[0].grading.status).toBe("idle");
+  });
+});
+
+describe("stale call sweep (round 2)", () => {
+  it("ends abandoned calls you spoke in and drops empty ones", () => {
+    const old = new Date(Date.now() - 8 * 3600_000).toISOString();
+    db.upsertSession({ ...base("spoke", old), status: "active" });
+    db.upsertSession({ ...base("empty", old), status: "active", turns: [] });
+    db.upsertSession({ ...base("fresh"), status: "active" });
+    expect(db.sweepStale()).toBe(2);
+    expect(db.session("spoke")!.status).toBe("ended");
+    expect(db.session("empty")).toBeNull();
+    expect(db.session("fresh")!.status).toBe("active");
+  });
+});

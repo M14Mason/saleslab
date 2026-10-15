@@ -13,7 +13,8 @@ export default function Setup() {
   const nav = useNavigate();
   const { customScenarios, settings } = useData();
   const scenario = findScenario(id, customScenarios);
-  const [difficulty, setDifficulty] = useState<Difficulty>((params.get("d") as Difficulty) || settings.defaultDifficulty);
+  const dParam = params.get("d");
+  const [difficulty, setDifficulty] = useState<Difficulty>(dParam === "easy" || dParam === "medium" || dParam === "hard" ? dParam : settings.defaultDifficulty);
   const [mode, setMode] = useState<"practice" | "assessment">("practice");
   const [liveCoaching, setLive] = useState(settings.liveCoaching);
   const [surprise, setSurprise] = useState(false);

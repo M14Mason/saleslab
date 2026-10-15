@@ -21,13 +21,16 @@ export function Empty({ title, body, action }: { title: string; body: string; ac
 /** Accessible modal: focus moves in, Esc closes, focus returns. */
 export function Modal({ open, title, children, onClose }: { open: boolean; title: string; children: ReactNode; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  // Depends on `open` only: parents re-render often (the call timer ticks 4x a second) and must not reset focus.
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     const first = ref.current?.querySelector<HTMLElement>("button, [href], input, select, textarea");
     first?.focus();
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.stopPropagation(); onClose(); }
+      if (e.key === "Escape") { e.stopPropagation(); close.current(); }
       if (e.key === "Tab" && ref.current) {
         const els = [...ref.current.querySelectorAll<HTMLElement>("button, [href], input, select, textarea")].filter((x) => !x.hasAttribute("disabled"));
         if (!els.length) return;
@@ -38,10 +41,10 @@ export function Modal({ open, title, children, onClose }: { open: boolean; title
     };
     document.addEventListener("keydown", key, true);
     return () => { document.removeEventListener("keydown", key, true); prev?.focus(); };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50" onMouseDown={(e) => { if (e.target === e.currentTarget) close.current(); }}>
       <div ref={ref} role="dialog" aria-modal="true" aria-label={title} className="panel w-full max-w-md p-6 flex flex-col gap-4 safe-b">
         <h2 className="text-2xl">{title}</h2>
         {children}

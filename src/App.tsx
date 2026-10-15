@@ -122,6 +122,7 @@ export default function App() {
   useEffect(() => { applyTheme(s); return watchSystem(() => applyTheme(db.settings())); }, [s]);
   // Warm up the natural voice in the background as soon as the app opens (never blocks anything).
   useEffect(() => { if (key) preloadNatural(s.voiceEngine); }, [key, s.voiceEngine]);
+  useEffect(() => { db.sweepStale(); }, []);
   // Demo mode always has sample history to explore.
   useEffect(() => { if (key === "demo") void import("./lib/demo").then((m) => m.seedDemo()); }, [key]);
 

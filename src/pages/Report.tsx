@@ -27,8 +27,9 @@ export default function Report() {
   useEffect(() => {
     if (!s || started.current) return;
     started.current = true;
-    // Grade automatically once. startGrading is single-flight and skips sessions already graded.
-    if (!s.report && s.grading.status !== "failed" && s.turns.some((t) => t.role === "seller")) void startGrading(s.id);
+    // Grade automatically only right after a call. Older calls wait for a tap, so browsing history never spends credit.
+    const recent = Date.now() - new Date(s.endedAt ?? s.startedAt).getTime() < 30 * 60_000;
+    if (recent && s.status === "ended" && !s.report && s.grading.status !== "failed" && s.turns.some((t) => t.role === "seller")) void startGrading(s.id);
   }, [s]);
 
   if (!s) return <Navigate to="/history" replace />;
@@ -44,15 +45,25 @@ function Grading({ s }: { s: Session }) {
   // A status saved as "in progress" with no live request means the app was closed mid-grading.
   const stale = ["preparing", "analyzing", "scoring", "retrying"].includes(st) && !isGrading(s.id);
   const failed = st === "failed" || stale;
+  const notStarted = st === "idle" && !isGrading(s.id);
   const idx = STAGES.findIndex((x) => x.id === st);
   const secs = Math.round((Date.now() - t0) / 1000);
   const empty = !s.turns.some((t) => t.role === "seller");
 
   return (
     <div className="flex flex-col gap-5 max-w-xl">
-      <h1 className="text-4xl font-extrabold">{failed ? "Grading didn't finish" : "Your coach is reviewing the call"}</h1>
+      <h1 className="text-4xl font-extrabold">{notStarted ? "Not graded yet" : failed ? "Grading didn't finish" : "Your coach is reviewing the call"}</h1>
       <p className="text-mute">{s.scenario.title}, {s.difficulty}</p>
-      {!failed && (
+      {notStarted && (
+        <div className="panel p-5 flex flex-col gap-3">
+          {!empty ? <>
+            <p>Get a full coaching report on this call. Uses one Claude call (a few cents).</p>
+            <button className="btn btn-primary" onClick={() => void startGrading(s.id)}>Get coached</button>
+          </> : <p className="text-mute">You didn't say anything on this call, so there's nothing to grade.</p>}
+          <Transcript s={s} />
+        </div>
+      )}
+      {!failed && !notStarted && (
         <ol className="panel p-5 flex flex-col gap-3" aria-live="polite">
           {STAGES.map((x, i) => {
             const state = st === "retrying" ? (i === 1 ? "now" : i < 1 ? "done" : "todo") : i < idx ? "done" : i === idx ? "now" : "todo";
@@ -65,7 +76,7 @@ function Grading({ s }: { s: Session }) {
           })}
         </ol>
       )}
-      {!failed && <><p className="text-sm text-mute num">{secs}s. Usually 15 to 40 seconds.</p><Skeleton className="h-28" /><Skeleton className="h-20" /></>}
+      {!failed && !notStarted && <><p className="text-sm text-mute num">{secs}s. Usually 15 to 40 seconds.</p><Skeleton className="h-28" /><Skeleton className="h-20" /></>}
       {failed && (
         <div className="panel p-5 flex flex-col gap-3">
           <p className="text-bad" role="alert">{stale ? "The app was closed while grading. Your transcript is saved." : s.grading.error}</p>
@@ -87,12 +98,10 @@ function Results({ s, report: r }: { s: Session; report: R }) {
   const [copied, setCopied] = useState(false);
   const fresh = useRef(Date.now() - new Date(s.endedAt ?? s.startedAt).getTime() < 5 * 60_000);
   // Achievements earned since this call ended (grading unlocks them; this catches older sessions too).
-  const [unlocked] = useState(() => {
-    evaluateAchievements();
-    const since = s.endedAt ?? s.startedAt;
-    const got = db.get().achievements;
-    return ACHIEVEMENTS.filter((a) => got[a.id] && got[a.id] >= since);
-  });
+  const { achievements } = useData();
+  useEffect(() => { evaluateAchievements(); }, []); // never write to the store during render
+  const since = s.endedAt ?? s.startedAt;
+  const unlocked = ACHIEVEMENTS.filter((a) => achievements[a.id] && achievements[a.id] >= since);
   useEntrance(ref, []);
   const m = s.metrics;
   const radar = useMemo(() => Object.fromEntries(r.skills.filter((k) => k.score !== null).map((k) => [k.name, k.score])), [r]);
@@ -129,6 +138,10 @@ function Results({ s, report: r }: { s: Session; report: R }) {
           <p>{r.summary}</p>
         </div>
       </section>
+
+      {s.grading.status === "failed" && s.grading.error && (
+        <div data-anim role="alert" className="panel p-4 text-sm"><span className="text-bad">Re-grade failed:</span> {s.grading.error} Your previous report is still shown.</div>
+      )}
 
       {unlocked.length > 0 && (
         <section data-anim className="panel p-4 border-brass" aria-label="New achievements">

@@ -79,7 +79,15 @@ function read(): Data {
 function normalize(d: Partial<Data>): Data {
   return {
     version: 2,
-    sessions: Array.isArray(d.sessions) ? d.sessions : [],
+    // Repair sessions from older/edited backups so a bad record can never crash a page.
+    sessions: (Array.isArray(d.sessions) ? d.sessions : []).filter((x) => x && typeof x.id === "string").map((x) => ({
+      ...x,
+      scenario: x.scenario && x.scenario.persona ? x.scenario : (SCENARIOS.find((sc) => sc.id === x.scenarioId) ?? SCENARIOS[0]),
+      turns: Array.isArray(x.turns) ? x.turns.filter((t) => t && typeof t.text === "string") : [],
+      grading: x.grading ?? { status: "idle", error: null, attempts: 0, ms: null },
+      perf: x.perf ?? { firstAudioMs: [], firstTokenMs: [] },
+      report: x.report ?? null, metrics: x.metrics ?? null,
+    })),
     customScenarios: Array.isArray(d.customScenarios) ? d.customScenarios : [],
     settings: { ...DEFAULT_SETTINGS, ...(d.settings ?? {}) },
     achievements: d.achievements ?? {},
@@ -159,6 +167,17 @@ export const db = {
     });
   },
   wipe: () => { try { localStorage.removeItem(KEY); localStorage.removeItem(LEGACY); } catch { /* ignore */ } write(empty()); },
+  /** Calls left open for 6+ hours: keep ones you spoke in (as ended, in History), drop empty ones. */
+  sweepStale: (now = Date.now()) => {
+    const stale = read().sessions.filter((s) => s.status === "active" && now - new Date(s.startedAt).getTime() > 6 * 3600_000);
+    if (!stale.length) return 0;
+    update((d) => {
+      const ids = new Set(stale.map((s) => s.id));
+      d.sessions = d.sessions.filter((s) => !(ids.has(s.id) && !s.turns.some((t) => t.role === "seller")));
+      for (const s of d.sessions) if (ids.has(s.id)) { s.status = "ended"; s.endedAt ??= new Date(new Date(s.startedAt).getTime() + s.durationSec * 1000).toISOString(); }
+    });
+    return stale.length;
+  },
   /** Test helper. */
   _reset: () => { cache = null; },
 };

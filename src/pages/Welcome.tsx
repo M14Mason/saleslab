@@ -1,10 +1,11 @@
-import { useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useRef, useState, type FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { ClaudeError, getKey, setKey, testKey } from "../lib/claude";
 import { db } from "../lib/db";
 import { seedDemo } from "../lib/demo";
 import { useEntrance } from "../lib/useGsap";
 import MicTest from "../components/MicTest";
+const GLCanvas = lazy(() => import("../gl/GLCanvas"));
 
 /** First-run onboarding: what this is, your key (or demo), mic check. */
 export default function Welcome() {
@@ -42,7 +43,10 @@ export default function Welcome() {
   }
 
   return (
-    <div ref={ref} className="min-h-dvh safe-t safe-b px-5 py-10 max-w-xl mx-auto flex flex-col justify-center gap-8">
+    <div className="relative min-h-dvh">
+    <Suspense fallback={null}><GLCanvas variant="ribbons" className="fixed inset-0 w-full h-full opacity-70" scale={0.5} fps={30} /></Suspense>
+    <div className="fixed inset-0 bg-bg/55" aria-hidden />
+    <div ref={ref} className="relative min-h-dvh safe-t safe-b px-5 py-10 max-w-xl mx-auto flex flex-col justify-center gap-8">
       <p data-anim className="display text-xl font-extrabold">SalesLab</p>
 
       {step === "intro" && (
@@ -84,6 +88,7 @@ export default function Welcome() {
           <button data-anim className="btn btn-primary" onClick={finish}>Start training</button>
         </div>
       )}
+    </div>
     </div>
   );
 }

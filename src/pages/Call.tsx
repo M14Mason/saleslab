@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import gsap from "gsap";
 import { useCall, type CallSetup, type CallState } from "../call/useCall";
@@ -6,6 +6,7 @@ import { db } from "../lib/db";
 import { reducedMotion } from "../lib/theme";
 import { unlockAudio } from "../speech/tts";
 import Waveform from "../components/Waveform";
+const GLCanvas = lazy(() => import("../gl/GLCanvas"));
 import Confetti from "../components/Confetti";
 import { Modal } from "../components/ui";
 
@@ -16,6 +17,11 @@ export default function Call() {
   const [params] = useSearchParams();
   const resumeId = params.get("resume");
   const resumeSession = resumeId ? db.session(resumeId) : null;
+  // A finished call (e.g. reached with the Back button) goes to its report, never silently starts a new call.
+  if (resumeId && !loc.state?.setup) {
+    if (!resumeSession) return <Navigate to="/" replace />;
+    if (resumeSession.status !== "active") return <Navigate to={`/session/${resumeSession.id}`} replace />;
+  }
   const setup: CallSetup | null = loc.state?.setup ?? (resumeSession ? {
     scenario: resumeSession.scenario, difficulty: resumeSession.difficulty, mode: resumeSession.mode,
     liveCoaching: resumeSession.liveCoaching, surprise: resumeSession.surprise, timeLimitSec: resumeSession.timeLimitSec,
@@ -42,7 +48,13 @@ function Live({ setup, resumeId }: { setup: CallSetup; resumeId: string | null }
 
   // Fresh calls start immediately (the tap on "Start call" already unlocked audio).
   useEffect(() => {
-    if (!resumeId && !startOnce.current) { startOnce.current = true; setStarted(true); void c.start(setup); }
+    if (!resumeId && !startOnce.current) {
+      startOnce.current = true; setStarted(true);
+      void c.start(setup);
+      // Put the session in the URL so a reload offers "Resume" instead of starting a second call.
+      const id = c.sessionId();
+      if (id) nav(`/call?resume=${id}`, { replace: true, state: null });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -55,6 +67,7 @@ function Live({ setup, resumeId }: { setup: CallSetup; resumeId: string | null }
   }, [started, c.thinkingSince]);
 
   useEffect(() => { if (!c.voiceIn) setTyping(true); }, [c.voiceIn]);
+  useEffect(() => { c.setTyping(typing); }, [typing]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { transcriptEnd.current?.scrollIntoView({ block: "end", behavior: reducedMotion() ? "auto" : "smooth" }); }, [c.turns.length, c.streaming, c.interim, showTranscript]);
 
   // Animate state changes on the stage.
@@ -151,9 +164,14 @@ function Live({ setup, resumeId }: { setup: CallSetup; resumeId: string | null }
 
       <div ref={stage} className="flex-1 w-full max-w-2xl mx-auto px-4 py-5 flex flex-col gap-4">
         <div className="flex flex-col items-center gap-2 text-center">
-          <span aria-hidden className={`w-20 h-20 rounded-full flex items-center justify-center display font-extrabold text-2xl transition-shadow ${c.state === "buyer" ? "bg-buyer text-bg shadow-[0_0_0_8px_color-mix(in_oklab,var(--buyer)_25%,transparent)]" : "bg-raised text-buyer"}`}>
-            {buyer.split(" ").map((w) => w[0]).slice(0, 2).join("")}
-          </span>
+          <div aria-hidden className="relative w-44 h-44 sm:w-52 sm:h-52 -my-6">
+            <Suspense fallback={null}>
+              <GLCanvas variant="orb" level={c.level} mode={who === "idle" ? "idle" : who} className="absolute inset-0 w-full h-full rounded-full" scale={0.75} />
+            </Suspense>
+            <span className="absolute inset-0 flex items-center justify-center display font-extrabold text-3xl text-ink">
+              {buyer.split(" ").map((w) => w[0]).slice(0, 2).join("")}
+            </span>
+          </div>
           <p data-state-label role="status" aria-live="polite" className={`display text-2xl font-bold ${c.outcome === "deal" ? "text-good" : c.outcome === "no_deal" ? "text-bad" : ""}`}>
             {label}{c.state === "thinking" && <span className="num text-mute text-base font-normal"> {thinkingFor.toFixed(1)}s</span>}
           </p>

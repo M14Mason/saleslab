@@ -95,3 +95,34 @@ describe("turn-taking (regression: AI cut the user off)", () => {
     expect(onInterim).toHaveBeenLastCalledWith("when did you last");
   });
 });
+
+describe("iPhone mode and mic cleanup (round 2 fixes)", () => {
+  it("on iPhone uses short sessions and stitches them without repeating words", () => {
+    const ua = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)", configurable: true });
+    try {
+      const l = make(); l.start();
+      expect(FakeRec.last!.continuous).toBe(false);
+      FakeRec.last!.say("when did you", true);
+      FakeRec.last!.onend!();
+      FakeRec.last!.say("when did you last sign something", true); // Safari re-sends earlier words
+      l.finish();
+      expect(onFinal).toHaveBeenCalledWith("when did you last sign something");
+    } finally {
+      if (ua) Object.defineProperty(navigator, "userAgent", ua); else delete (navigator as unknown as Record<string, unknown>).userAgent;
+    }
+  });
+
+  it("never leaves the mic open if the meter is stopped before permission resolves", async () => {
+    const { MicMeter } = await import("../../src/speech/stt");
+    const stopTrack = vi.fn();
+    let resolve!: (s: MediaStream) => void;
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: () => new Promise<MediaStream>((r) => { resolve = r; }) } });
+    const m = new MicMeter(() => {});
+    const p = m.start();
+    m.stop();
+    resolve({ getTracks: () => [{ stop: stopTrack }], getAudioTracks: () => [] } as unknown as MediaStream);
+    await p;
+    expect(stopTrack).toHaveBeenCalled();
+  });
+});

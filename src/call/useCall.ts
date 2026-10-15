@@ -56,6 +56,8 @@ export function useCall() {
   const voiceOk = useRef(voiceIn);
   const outcomeRef = useRef<"deal" | "no_deal" | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingRef = useRef(false);
+  const timeUp = useRef(false);
 
   const setState = (s: CallState) => { st.current = s; setStateRaw(s); };
 
@@ -73,8 +75,8 @@ export function useCall() {
 
   // ---------------- listening ----------------
   const listen = useCallback((auto = false) => {
-    if (["listening", "thinking", "ended"].includes(st.current) || outcomeRef.current) return;
-    if (!voiceOk.current) { setState("listening"); return; } // typing mode
+    if (["listening", "thinking", "ended"].includes(st.current) || outcomeRef.current || timeUp.current) return;
+    if (!voiceOk.current || (auto && typingRef.current)) { setState("idle"); return; } // typing mode: no mic
     speaker.current?.stop();
     setError(null);
     setInterim("");
@@ -116,6 +118,7 @@ export function useCall() {
     const cfg = setup.current!;
     const at = turnsRef.current;
     if (at.at(-1)?.role !== "seller") return;          // nothing to answer: prevents duplicate replies
+    if (timeUp.current) return;
     if (inflight.current) return;                        // single flight
     const ctrl = new AbortController();
     inflight.current = ctrl;
@@ -157,7 +160,7 @@ export function useCall() {
       }
       if (ctrl.signal.aborted || st.current !== "buyer") return;
       setState("idle");
-      if (!outcomeRef.current && db.settings().autoListen && voiceOk.current) {
+      if (!outcomeRef.current && db.settings().autoListen && voiceOk.current && !typingRef.current) {
         const sellerTurns = turnsRef.current.filter((t) => t.role === "seller").length;
         if (sellerTurns < MAX_TURNS) listen(true);
       }
@@ -188,6 +191,7 @@ export function useCall() {
     setTurnsBoth(next);
     const c = setup.current;
     if (c.mode === "practice" && c.liveCoaching) setHint(liveHint(next));
+    if (timeUp.current) { setState("idle"); return; } // time's up: keep your last line, no new reply
     await requestBuyer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestBuyer]);
@@ -202,7 +206,7 @@ export function useCall() {
       onLevel: (v) => { if (st.current === "buyer") setLevel(v); },
     });
     speaker.current.unlock(); // must run inside the tap that started the call
-    setError(null); setHint(null); setOutcome(null); outcomeRef.current = null;
+    setError(null); setHint(null); setOutcome(null); outcomeRef.current = null; timeUp.current = false;
 
     if (resume) {
       sessionId.current = resume.id;
@@ -227,14 +231,23 @@ export function useCall() {
       await speaker.current.say(cfg.scenario.opener);
       if (st.current !== "buyer") return;
       setState("idle");
-      if (s.autoListen && voiceOk.current) listen(true);
+      if (s.autoListen && voiceOk.current && !typingRef.current) listen(true);
     }
     if (cfg.timeLimitSec) {
       const endAt = startedAt.current + cfg.timeLimitSec * 1000;
       timer.current = setInterval(() => {
         const left = Math.max(0, Math.round((endAt - Date.now()) / 1000));
         setRemaining(left);
-        if (left === 0 && timer.current) { clearInterval(timer.current); timer.current = null; setError({ message: "Time's up. End the call to get coached.", retry: null }); listener.current?.finish(); }
+        if (left === 0 && timer.current) {
+          clearInterval(timer.current); timer.current = null;
+          timeUp.current = true;
+          inflight.current?.abort(); inflight.current = null;
+          speaker.current?.stop();
+          listener.current?.finish();
+          setStreaming(""); setThinkingSince(null);
+          if (st.current !== "listening") setState("idle");
+          setError({ message: "Time's up. End the call to get coached.", retry: null });
+        }
       }, 500);
     }
   }, [listen, requestBuyer]);
@@ -324,6 +337,8 @@ export function useCall() {
     state, turns, interim, streaming, error, hint, outcome, level, thinkingSince, voiceIn, muted, remaining, micWarning,
     start, listen, submitText: submitSeller, interrupt, sendNow, reRecord, retry, pause, resume, toggleMute, end,
     dismissHint: () => setHint(null), dismissMicWarning: () => setMicWarning(null),
+    setTyping: (v: boolean) => { typingRef.current = v; if (v && st.current === "listening") { listener.current?.cancel(); stopMeter(); setInterim(""); setState("idle"); } },
+    timeUp: () => timeUp.current,
     sessionId: () => sessionId.current,
     settings,
   };

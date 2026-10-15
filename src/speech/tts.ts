@@ -188,7 +188,7 @@ export class Speaker {
     this.active++;
     // Generate natural audio immediately (in parallel with whatever is playing), play in order.
     const audioP = this.useNatural()
-      ? this.timed(natural.generate(text, this.opts.voice, this.opts.speed), 6000).catch(() => null)
+      ? this.timed(natural.generate(text, this.opts.voice, this.opts.speed), this.firstAudioAt === null ? 2500 : 5000).catch(() => null)
       : Promise.resolve(null);
     this.queue = this.queue.then(async () => {
       if (g !== this.gen) return;

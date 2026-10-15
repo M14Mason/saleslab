@@ -49,7 +49,12 @@ export class Listener {
 
   constructor(private o: ListenerOptions) {}
 
-  get text() { return `${this.committed} ${this.sessionText}`.replace(/\s+/g, " ").trim(); }
+  get text() {
+    const a = this.committed.trim(), b = this.sessionText.trim();
+    // Safari sometimes re-sends earlier words in a new session: don't double them.
+    const joined = !a ? b : !b ? a : b.toLowerCase().startsWith(a.toLowerCase()) ? b : `${a} ${b}`;
+    return joined.replace(/\s+/g, " ").trim();
+  }
   get isActive() { return this.active; }
 
   start() {
@@ -65,7 +70,9 @@ export class Listener {
     const rec = new C();
     rec.lang = "en-US";
     rec.interimResults = true;
-    rec.continuous = true;
+    // iPhone Safari's continuous mode is unreliable (repeated words), so there we run short
+    // sessions back-to-back and stitch them; our own silence timer still decides when your turn ends.
+    rec.continuous = !isIOS();
     rec.maxAlternatives = 1;
     rec.onresult = (e) => {
       let finals = "", interim = "";
@@ -143,18 +150,22 @@ export class MicMeter {
   private raf = 0;
   private peak = 0;
   private started = 0;
+  private stopped = false;
 
   constructor(private onLevel: (level: number) => void) {}
 
   async start(deviceId?: string | null): Promise<MicStatus> {
     if (!navigator.mediaDevices?.getUserMedia) return "missing";
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: deviceId ? { exact: deviceId } : undefined,
           echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1,
         },
       });
+      // stop() may have been called while we waited for permission: don't leave the mic on.
+      if (this.stopped) { stream.getTracks().forEach((t) => t.stop()); return "ok"; }
+      this.stream = stream;
     } catch (e) {
       const name = (e as DOMException).name;
       if (name === "NotAllowedError" || name === "SecurityError") return "denied";
@@ -162,7 +173,7 @@ export class MicMeter {
       return "error";
     }
     this.ctx = new AudioContext();
-    const src = this.ctx.createMediaStreamSource(this.stream);
+    const src = this.ctx.createMediaStreamSource(this.stream!);
     const an = this.ctx.createAnalyser();
     an.fftSize = 512;
     src.connect(an);
@@ -179,7 +190,7 @@ export class MicMeter {
       this.raf = requestAnimationFrame(tick);
     };
     tick();
-    const track = this.stream.getAudioTracks()[0];
+    const track = this.stream!.getAudioTracks()[0];
     if (track?.muted) return "silent";
     return "ok";
   }
@@ -194,6 +205,7 @@ export class MicMeter {
   }
 
   stop() {
+    this.stopped = true;
     cancelAnimationFrame(this.raf);
     this.stream?.getTracks().forEach((t) => t.stop());
     void this.ctx?.close().catch(() => {});
