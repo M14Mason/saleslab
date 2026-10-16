@@ -12,7 +12,9 @@ export const VOICES: { id: VoiceId; label: string }[] = [
   { id: "am_eric", label: "Boardroom" },
 ];
 
-export type Engine = "natural" | "system";
+export type Engine = "natural" | "system" | "custom";
+import { elevenAudio } from "./eleven";
+import type { ElevenConfig } from "../lib/keys";
 type Pending = { resolve: (a: { audio: Float32Array; rate: number }) => void; reject: (e: Error) => void };
 
 /** Splits streamed text into speakable sentences. Exported for tests. */
@@ -95,7 +97,7 @@ export const naturalStatus = () => (natural.ready ? "ready" : natural.failed ? "
 
 // One shared AudioContext, unlocked by the tap that starts a call (iOS requires a user gesture).
 let sharedCtx: AudioContext | null = null;
-function ctxOrNew(): AudioContext {
+export function ctxOrNew(): AudioContext {
   if (!sharedCtx || sharedCtx.state === "closed") {
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     sharedCtx = new AC();
@@ -168,6 +170,8 @@ export class Speaker {
   private gen = 0;                      // bumps on stop(): late audio from old turns is ignored
   private active = 0;                   // queued + playing sentences
   private naturalTooSlow = false;
+  private customFailed = false;
+  customError: string | null = null;
   private raf = 0;
   muted = false;
   engineUsed: Engine = "system";
@@ -180,6 +184,8 @@ export class Speaker {
       gender?: "male" | "female"; pitch?: number; rate?: number; detune?: number; seed?: string;
       /** Global "deeper voice" setting in cents (0 = normal, -200 = much deeper). */
       depth?: number;
+      /** ElevenLabs custom voice (Wolf only). Falls back to the normal engines if it fails. */
+      custom?: ElevenConfig | null;
     },
     private ev: SpeakerEvents = {},
   ) {}
@@ -232,12 +238,17 @@ export class Speaker {
     const g = this.gen;
     this.active++;
     // Generate natural audio immediately (in parallel with whatever is playing), play in order.
-    const audioP = this.useNatural()
+    const customP = this.opts.custom && !this.customFailed && this.ctx
+      ? this.customAudio(text) : Promise.resolve(null);
+    const audioP = !this.opts.custom && this.useNatural()
       ? this.timed(natural.generate(text, this.opts.voice, this.naturalSpeed()), this.firstAudioAt === null ? 2500 : 5000).catch(() => null)
       : Promise.resolve(null);
     this.queue = this.queue.then(async () => {
       if (g !== this.gen) return;
       this.ev.onSpeaking?.(true);
+      const c = await customP;
+      if (g !== this.gen) return;
+      if (c) { this.firstAudioAt ??= performance.now(); this.engineUsed = "custom"; await this.playBuffer(c.getChannelData(0), c.sampleRate, g, 0); return; }
       const a = await audioP;
       if (g !== this.gen) return;
       this.firstAudioAt ??= performance.now();
@@ -248,6 +259,22 @@ export class Speaker {
       this.active--;
       if (this.active === 0) this.ev.onSpeaking?.(false);
     });
+  }
+
+  /** ElevenLabs audio for one sentence. One failure turns it off for the rest of the call (no repeated charges or waits). */
+  // Requests run one after another (still ahead of playback) so a failure stops the rest before they're sent.
+  private customChain: Promise<unknown> = Promise.resolve();
+  private customAudio(text: string): Promise<AudioBuffer | null> {
+    const p = this.customChain.then(() => {
+      if (this.customFailed) return null;
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 6000);
+      return elevenAudio(this.opts.custom!, text, this.ctx!, ctrl.signal)
+        .catch((e) => { this.customFailed = true; this.customError = e instanceof Error && e.name !== "AbortError" ? e.message : "ElevenLabs was too slow"; return null; })
+        .finally(() => clearTimeout(t));
+    });
+    this.customChain = p;
+    return p;
   }
 
   private timed<T>(p: Promise<T>, ms: number): Promise<T> {
@@ -263,16 +290,16 @@ export class Speaker {
     });
   }
 
-  private playBuffer(audio: Float32Array, rate: number, g: number): Promise<void> {
+  private playBuffer(audio: Float32Array, rate: number, g: number, cents = this.cents()): Promise<void> {
     const ctx = this.ctx;
     if (!ctx) return Promise.resolve();
     if (ctx.state === "suspended") void ctx.resume();
     const buf = ctx.createBuffer(1, audio.length, rate);
-    const playRate = Math.pow(2, this.cents() / 1200);
+    const playRate = Math.pow(2, cents / 1200);
     buf.copyToChannel(audio as Float32Array<ArrayBuffer>, 0);
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.detune.value = this.cents(); // deeper voice
+    src.detune.value = cents; // deeper voice (0 for the custom voice: it already sounds the way it was designed)
     this.analyser ??= ctx.createAnalyser();
     src.connect(this.analyser);
     this.analyser.connect(ctx.destination);

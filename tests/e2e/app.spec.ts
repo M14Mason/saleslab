@@ -159,3 +159,16 @@ test("round 3: Learn this field tab and random buyer", async ({ page }) => {
   await expect(page).toHaveURL(/#\/practice\/[a-z-]+$/);
   await expect(page.getByRole("tab", { name: "Practice" })).toBeVisible();
 });
+
+test("Settings: ElevenLabs key saves locally and can be removed", async ({ page }) => {
+  await new MockClaude().install(page);
+  await signedIn(page);
+  await page.goto("#/settings");
+  await page.getByLabel("ElevenLabs API key").fill("sk_abcd1234");
+  await page.getByLabel("ElevenLabs Voice ID").fill("NKNZtOg05k03BNkLBjHJ");
+  await page.getByRole("button", { name: "Save" }).nth(1).click();
+  await expect(page.getByText(/key ending in 1234/)).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("saleslab.v2") ?? "")).not.toContain("sk_abcd1234");
+  await page.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(page.getByText(/^Off\./)).toBeVisible();
+});

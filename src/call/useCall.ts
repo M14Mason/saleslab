@@ -9,6 +9,7 @@ import { MAX_TURNS } from "../../shared/limits";
 import { voiceFor, type Difficulty, type Scenario } from "../../shared/scenarios";
 import { isIOS, Listener, MicMeter, sttSupported, type SttError } from "../speech/stt";
 import { preloadNatural, Speaker } from "../speech/tts";
+import { getEleven } from "../lib/keys";
 
 const estimateSpeechMs = (text: string) => 1500 + text.split(/\s+/).length * 520;
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | void> {
@@ -223,6 +224,7 @@ export function useCall() {
     speaker.current = new Speaker({
       engine: s.voiceEngine, voice: v.natural, speed: s.speed, gender: cfg.scenario.persona.gender,
       pitch: v.pitch, rate: v.rate, detune: v.detune, depth: s.voiceDepth, seed: cfg.scenario.persona.name,
+      custom: cfg.scenario.id === "wolf-pen" ? getEleven() : null,
     }, {
       onLevel: (v) => { if (st.current === "buyer") setLevel(v); },
     });

@@ -4,7 +4,9 @@ import { db, useData } from "../lib/db";
 import { removeDemo, seedDemo } from "../lib/demo";
 import { download } from "../lib/export";
 import { recentEvents } from "../lib/log";
-import { canUseNatural, naturalStatus, preloadNatural } from "../speech/tts";
+import { canUseNatural, ctxOrNew, naturalStatus, preloadNatural } from "../speech/tts";
+import { getEleven, setEleven } from "../lib/keys";
+import { testEleven } from "../speech/eleven";
 import MicTest from "../components/MicTest";
 import { Modal, Segmented, Toggle } from "../components/ui";
 
@@ -81,6 +83,8 @@ export default function Settings() {
           <input type="range" min={0.8} max={1.4} step={0.02} value={s.speed} onChange={(e) => set({ speed: Number(e.target.value) })} className="accent-[var(--brass)] h-10" />
         </label>
       </section>
+
+      <ElevenSection />
 
       <section className="panel p-5 flex flex-col gap-4" aria-labelledby="h-turn">
         <h2 id="h-turn" className="text-xl font-bold">Your turn</h2>
@@ -160,5 +164,41 @@ export default function Settings() {
           <button className="btn btn-danger" onClick={() => { db.wipe(); setKey(null); location.hash = "#/welcome"; }}>Reset everything</button></div>
       </Modal>
     </div>
+  );
+}
+
+/** ElevenLabs custom voice for Jordan "The Wolf" Hale. The key stays in this browser and is never in backups. */
+function ElevenSection() {
+  const [saved, setSaved] = useState(getEleven());
+  const [key, setK] = useState("");
+  const [voiceId, setV] = useState(saved?.voiceId ?? "");
+  const [msg, setMsg] = useState<string | null>(null);
+  const save = () => {
+    const c = { key: key.trim() || saved?.key || "", voiceId: voiceId.trim() };
+    if (!c.key || !c.voiceId) { setMsg("Add both the API key and the Voice ID."); return; }
+    setEleven(c); setSaved(getEleven()); setK(""); setMsg("Saved. Tap Test to hear it.");
+  };
+  const test = async () => {
+    if (!saved) return;
+    setMsg("Testing...");
+    setMsg(await testEleven(saved, ctxOrNew()));
+  };
+  return (
+    <section className="panel p-5 flex flex-col gap-3" aria-labelledby="h-eleven">
+      <h2 id="h-eleven" className="text-xl font-bold">Custom voice for the Wolf (ElevenLabs)</h2>
+      <p className="text-sm text-mute">
+        {saved ? `On. Using voice ${saved.voiceId} with key ending in ${saved.key.slice(-4)}. Stored only in this browser, never in backups.` : "Off. Jordan \"The Wolf\" Hale uses the normal voice."}
+        {" "}Only the Wolf scenario uses it. If ElevenLabs fails or runs out of credits, the call keeps going with the normal voice. Use a voice you designed yourself, not a copy of a real person.
+      </p>
+      <input className="field" type="password" placeholder={saved ? "New ElevenLabs API key (leave empty to keep)" : "ElevenLabs API key"} aria-label="ElevenLabs API key" autoComplete="off" value={key} onChange={(e) => setK(e.target.value)} />
+      <input className="field" placeholder="Voice ID" aria-label="ElevenLabs Voice ID" autoComplete="off" value={voiceId} onChange={(e) => setV(e.target.value)} />
+      <div className="flex flex-wrap gap-2">
+        <button className="btn btn-quiet btn-sm" onClick={save}>Save</button>
+        {saved && <button className="btn btn-quiet btn-sm" onClick={() => void test()}>Test</button>}
+        {saved && <button className="btn btn-danger btn-sm" onClick={() => { setEleven(null); setSaved(null); setV(""); setMsg("Removed."); }}>Remove</button>}
+      </div>
+      {msg && <p role="status" className="text-sm">{msg}</p>}
+      <p className="text-xs text-mute">Cost: ElevenLabs bills per character. A 3-minute call is roughly 1,500 characters.</p>
+    </section>
   );
 }

@@ -11,6 +11,8 @@ Practice sales calls out loud with AI buyers, then get graded by an AI coach.
 | Your voice to text | Browser speech recognition (Chrome, Edge, Safari) | Free |
 | Buyer replies | Claude Sonnet 5.5 ("Smart", default) or Haiku 5.5 ("Fast"), streamed, no up-front thinking, with a running call memory | Your Claude key |
 | Buyer voice | Gender-matched device voice (prefers natural/neural voices) or Kokoro natural voice, per-buyer pitch, adjustable depth | Free |
+| Wolf custom voice (optional) | ElevenLabs Flash v2.5 with your own key and Voice ID (Settings). Falls back to the normal voice on any error | Your ElevenLabs plan |
+| Wolf custom voice (optional) | ElevenLabs Flash v2.5, your own key and Voice ID (Settings). Falls back to the normal voice on any error | Your ElevenLabs plan |
 | Buyer faces | Avataaars illustrations (Pablo Stanley, free for commercial use) via DiceBear (MIT) | Free |
 | Live coaching tips, talk ratio, filler words | Computed on your device | Free |
 | Coaching report | Claude Sonnet 5.5 with structured JSON output, saved after first run | Your Claude key |

@@ -308,3 +308,28 @@ test("round 3: a female buyer gets a female voice and face", async ({ page }) =>
   // The test browser has no voices at all, so the app must shift pitch up for a woman.
   for (const p of pitches) expect(p).toBeGreaterThan(1.1);
 });
+
+test("ElevenLabs: Wolf uses the custom voice, falls back on failure, other buyers never call it", async ({ page }) => {
+  const api = new MockClaude();
+  await api.install(page);
+  const hits: { url: string; key: string | undefined }[] = [];
+  await page.route("https://api.elevenlabs.io/**", (r) => {
+    hits.push({ url: r.request().url(), key: r.request().headers()["xi-api-key"] });
+    return r.fulfill({ status: 401, headers: { "access-control-allow-origin": "*" }, body: "{}" });
+  });
+  await fakeVoice(page, { lines: [] });
+  await signedIn(page, { autoListen: false });
+  await page.addInitScript(() => localStorage.setItem("saleslab.eleven", JSON.stringify({ key: "sk_test", voiceId: "VOICE1" })));
+  await page.goto("#/practice/wolf-pen");
+  await page.getByRole("button", { name: "Start call" }).click();
+  await page.waitForTimeout(2000);
+  expect(hits.length).toBe(1); // one failure turns it off for the call: no repeated charges
+  expect(hits[0].url).toContain("/v1/text-to-speech/VOICE1");
+  expect(hits[0].key).toBe("sk_test");
+  const spoken = await page.evaluate(() => (window as unknown as { __spoken: unknown[] }).__spoken.length);
+  expect(spoken).toBeGreaterThan(0); // fell back to the normal voice
+  await page.goto("#/practice/closing-hesitant");
+  await page.getByRole("button", { name: "Start call" }).click();
+  await page.waitForTimeout(1500);
+  expect(hits.length).toBe(1);
+});
