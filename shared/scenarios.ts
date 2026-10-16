@@ -83,9 +83,9 @@ const CORE: Scenario[] = [
     objective: "Uncover why he needs a pen, tie the pen to that need, and close.",
     product: "A plain ballpoint pen",
     persona: {
-      name: "Jordan \"The Wolf\" Belfort", gender: "male", look: { top: "theCaesarAndSidePart", hairColor: "2c1b18", facialHair: "beardLight", clothing: "blazerAndShirt", skin: "edb98a" }, voice: { natural: "am_fenrir", pitch: 0.78, rate: 1.0, detune: -140 },
+      name: "Jordan \"The Wolf\" Hale", gender: "male", look: { top: "theCaesarAndSidePart", hairColor: "2c1b18", facialHair: "beardLight", clothing: "blazerAndShirt", skin: "edb98a" }, voice: { natural: "am_fenrir", pitch: 0.78, rate: 1.0, detune: -140 },
       title: "Head of the trading floor",
-      company: "Stratton Oakmont",
+      company: "Hale Capital",
       personality: "Cocky, impatient, funny, respects certainty",
       style: "Fast-talking New York trading-floor boss. Short punchy lines.",
       painPoints: ["His favorite pen died this morning", "Signs contracts all day"],
