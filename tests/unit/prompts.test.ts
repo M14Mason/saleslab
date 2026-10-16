@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildGraderPrompt, buyerSystemPrompt, isRepeat, parseOutcome, REPORT_JSON_SCHEMA, ReportSchema,
+  buildGraderPrompt, buyerSystemPrompt, callMemory, isRepeat, parseOutcome, REPORT_JSON_SCHEMA, ReportSchema,
   sanitizeReport, SCENARIO_JSON_SCHEMA, SKILLS, toClaudeMessages, type Turn,
 } from "../../shared/prompts";
 import { dailyScenario, SCENARIOS } from "../../shared/scenarios";
@@ -40,6 +40,23 @@ describe("roleplay prompt", () => {
     const a = dailyScenario(new Date(2026, 9, 15, 8));
     const b = dailyScenario(new Date(2026, 9, 15, 22));
     expect(a.scenario.id).toBe(b.scenario.id);
+  });
+});
+
+describe("call memory (round 3: 'it forgets what I asked')", () => {
+  it("lists every seller question even without question marks", () => {
+    const m = callMemory([t("seller", "hey how is your day going"), t("buyer", "Fine."), t("seller", "What do you use to sign contracts. Are you ready to buy")]);
+    expect(m).toContain("how is your day going");
+    expect(m).toContain("What do you use to sign contracts");
+    expect(m).toMatch(/asked for a commitment: 1/);
+    expect(m).toMatch(/spoken 2 times/);
+  });
+  it("is empty before the seller speaks, and the prompt carries it", () => {
+    expect(callMemory([])).toBe("");
+    expect(buyerSystemPrompt(wolf, "medium", { memory: "Call memory XYZ" })).toContain("Call memory XYZ");
+  });
+  it("tells the buyer to read through speech-to-text errors", () => {
+    expect(buyerSystemPrompt(wolf, "medium")).toMatch(/speech-to-text/);
   });
 });
 

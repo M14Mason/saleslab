@@ -20,13 +20,34 @@ describe("buyer turn request (regression: 'Talk to me.' loop and slow replies)",
     fetchMock.mockResolvedValueOnce(streamResponse(sse(["Why would ", "I need a pen?"])));
     await buyerTurn({ scenario, difficulty: "medium", turns });
     const b = bodyOf();
-    expect(b.thinking).toEqual({ type: "disabled" });
+    // Default "smart" buyer: Sonnet 5.5, which rejects "disabled" and takes "between_tools" (= no thinking without tools).
+    expect(b.thinking).toEqual({ type: "between_tools" });
+    expect(b.model).toBe(CONFIG.buyer.model);
+    expect(b.system).toMatch(/Call memory/);
     expect(b.stream).toBe(true);
     expect(b.max_tokens).toBeGreaterThanOrEqual(300);
     expect(b.output_config.effort).toBe("low");
     expect(b.temperature).toBeUndefined(); // non-default temperature is rejected by current models
-    expect(b.model).toBe(CONFIG.buyer.model);
     expect(fetchMock.mock.calls[0][1].headers["anthropic-dangerous-direct-browser-access"]).toBe("true");
+  });
+
+  it("fast mode uses Haiku with thinking disabled", async () => {
+    fetchMock.mockResolvedValueOnce(streamResponse(sse(["Sure."])));
+    await buyerTurn({ scenario, difficulty: "medium", turns, brain: "fast" });
+    expect(bodyOf().thinking).toEqual({ type: "disabled" });
+    expect(bodyOf().model).toBe(CONFIG.buyer.fastModel);
+  });
+
+  it("a reply that stalls mid-stream times out instead of hanging the call (round 3)", async () => {
+    vi.useFakeTimers();
+    const enc = new TextEncoder();
+    fetchMock.mockResolvedValueOnce(new Response(new ReadableStream({
+      start(c) { c.enqueue(enc.encode(sse(["Hold on"]).split("event: x\ndata: {\"type\":\"content_block_stop")[0])); /* never closes */ },
+    }), { status: 200 }));
+    const p = buyerTurn({ scenario, difficulty: "easy", turns }).catch((x) => x);
+    await vi.advanceTimersByTimeAsync(21_000);
+    expect(await p).toMatchObject({ kind: "timeout" });
+    vi.useRealTimers();
   });
 
   it("streams deltas in order and returns the parsed reply", async () => {

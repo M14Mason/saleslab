@@ -120,6 +120,40 @@ export function unlockAudio() {
   }
 }
 
+// ---------------- Device voice selection ----------------
+const MALE = /\b(daniel|alex|aaron|arthur|fred|david|guy|mark|christopher|eric|davis|andrew|brian|roger|steffan|tom|evan|nathan|reed|rishi|oliver|james|george|ryan|thomas|gordon|lee|male|man)\b/i;
+const FEMALE = /\b(samantha|karen|victoria|zira|aria|jenny|ava|allison|susan|serena|kate|moira|tessa|fiona|emma|michelle|sonia|libby|ana|nicky|zoe|joelle|noelle|female|woman|google us english)\b/i;
+const QUALITY = /(natural|neural|enhanced|premium|online|siri)/i;
+let voiceCache: SpeechSynthesisVoice[] = [];
+function voices(): SpeechSynthesisVoice[] {
+  if (!("speechSynthesis" in window)) return [];
+  const v = speechSynthesis.getVoices();
+  if (v.length) voiceCache = v;
+  return voiceCache;
+}
+if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  try { speechSynthesis.addEventListener?.("voiceschanged", () => voices()); } catch { /* old Safari */ }
+}
+
+/**
+ * Picks the most natural device voice that matches the buyer's gender. Different buyers of the same
+ * gender get different voices when the device has several. Exported for tests.
+ */
+export function pickVoice(all: SpeechSynthesisVoice[], gender: "male" | "female", seed: string): { voice: SpeechSynthesisVoice | null; genderMatched: boolean } {
+  const en = all.filter((v) => /^en/i.test(v.lang));
+  const want = gender === "male" ? MALE : FEMALE, other = gender === "male" ? FEMALE : MALE;
+  const score = (v: SpeechSynthesisVoice) =>
+    (want.test(v.name) ? 20 : other.test(v.name) ? -50 : 0) + (QUALITY.test(v.name) ? 10 : 0) + (/en[-_]US/i.test(v.lang) ? 3 : 0) + (v.localService ? 1 : 0);
+  const ranked = en.map((v) => ({ v, s: score(v) })).sort((a, b) => b.s - a.s);
+  const matched = ranked.filter((r) => r.s >= 20);
+  if (matched.length) {
+    const top = matched.filter((r) => r.s >= matched[0].s - 3); // equally good voices: vary by buyer
+    const h = [...seed].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 3);
+    return { voice: top[h % top.length].v, genderMatched: true };
+  }
+  return { voice: ranked.find((r) => r.s > -50)?.v ?? ranked[0]?.v ?? null, genderMatched: false };
+}
+
 export type SpeakerEvents = {
   onSpeaking?: (speaking: boolean) => void;
   onLevel?: (level: number) => void;
@@ -140,7 +174,13 @@ export class Speaker {
   firstAudioAt: number | null = null;
 
   constructor(
-    private opts: { engine: "auto" | "natural" | "system"; voice: string; speed: number; sinkId?: string | null },
+    private opts: {
+      engine: "auto" | "natural" | "system"; voice: string; speed: number; sinkId?: string | null;
+      /** Buyer voice: gender decides which voices are allowed; pitch/rate shape the device voice; detune deepens the natural voice. */
+      gender?: "male" | "female"; pitch?: number; rate?: number; detune?: number; seed?: string;
+      /** Global "deeper voice" setting in cents (0 = normal, -200 = much deeper). */
+      depth?: number;
+    },
     private ev: SpeakerEvents = {},
   ) {}
 
@@ -156,6 +196,11 @@ export class Speaker {
   }
 
   setOptions(p: Partial<{ voice: string; speed: number }>) { Object.assign(this.opts, p); }
+
+  /** Total detune in cents: the buyer's own depth plus the global setting. */
+  private cents() { return (this.opts.detune ?? 0) + (this.opts.depth ?? 0); }
+  /** Lowering pitch with detune also slows playback, so generate a bit faster to keep a natural pace. */
+  private naturalSpeed() { return this.opts.speed * (this.opts.rate ?? 1) * Math.pow(2, -this.cents() / 1200); }
 
   private useNatural() {
     if (this.naturalTooSlow || !natural.ready) return false;
@@ -188,7 +233,7 @@ export class Speaker {
     this.active++;
     // Generate natural audio immediately (in parallel with whatever is playing), play in order.
     const audioP = this.useNatural()
-      ? this.timed(natural.generate(text, this.opts.voice, this.opts.speed), this.firstAudioAt === null ? 2500 : 5000).catch(() => null)
+      ? this.timed(natural.generate(text, this.opts.voice, this.naturalSpeed()), this.firstAudioAt === null ? 2500 : 5000).catch(() => null)
       : Promise.resolve(null);
     this.queue = this.queue.then(async () => {
       if (g !== this.gen) return;
@@ -223,17 +268,22 @@ export class Speaker {
     if (!ctx) return Promise.resolve();
     if (ctx.state === "suspended") void ctx.resume();
     const buf = ctx.createBuffer(1, audio.length, rate);
+    const playRate = Math.pow(2, this.cents() / 1200);
     buf.copyToChannel(audio as Float32Array<ArrayBuffer>, 0);
     const src = ctx.createBufferSource();
     src.buffer = buf;
+    src.detune.value = this.cents(); // deeper voice
     this.analyser ??= ctx.createAnalyser();
     src.connect(this.analyser);
     this.analyser.connect(ctx.destination);
     this.source = src;
     this.pumpLevel();
     return new Promise((resolve) => {
-      src.onended = () => { cancelAnimationFrame(this.raf); this.ev.onLevel?.(0); resolve(); };
-      if (g !== this.gen) { resolve(); return; }
+      // Safety: if the audio device is interrupted (phone call, Bluetooth switch) onended may never fire.
+      const safety = setTimeout(() => finish(), (audio.length / rate / playRate) * 1000 + 1500);
+      const finish = () => { clearTimeout(safety); cancelAnimationFrame(this.raf); this.ev.onLevel?.(0); resolve(); };
+      src.onended = finish;
+      if (g !== this.gen) { finish(); return; }
       src.start();
     });
   }
@@ -257,13 +307,15 @@ export class Speaker {
     return new Promise((resolve) => {
       if (g !== this.gen) { resolve(); return; }
       const u = new SpeechSynthesisUtterance(text);
-      const voices = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
-      u.voice =
-        voices.find((v) => /(daniel|alex|aaron|arthur|fred|david|guy|male)/i.test(v.name) && v.localService) ??
-        voices.find((v) => /(daniel|alex|aaron|arthur|fred|david|guy|male)/i.test(v.name)) ??
-        voices.find((v) => v.default) ?? voices[0] ?? null;
-      u.rate = Math.min(1.5, Math.max(0.7, this.opts.speed));
-      u.pitch = 0.9;
+      const gender = this.opts.gender ?? "male";
+      const { voice, genderMatched } = pickVoice(voices(), gender, this.opts.seed ?? "");
+      u.voice = voice;
+      if (voice) u.lang = voice.lang;
+      // If the device has no voice of the right gender, shift pitch so a woman never sounds like a man (and vice versa).
+      const genderFix = genderMatched ? 1 : gender === "female" ? 1.35 : 0.72;
+      const depth = 1 + (this.opts.depth ?? 0) / 1000; // -100 cents -> 10% lower
+      u.pitch = Math.min(2, Math.max(0.1, (this.opts.pitch ?? 1) * genderFix * depth));
+      u.rate = Math.min(1.5, Math.max(0.7, this.opts.speed * (this.opts.rate ?? 1)));
       // Fake level so visuals still pulse (system voices expose no audio data).
       let pulse = 0;
       const iv = setInterval(() => this.ev.onLevel?.(0.25 + 0.35 * Math.abs(Math.sin((pulse += 0.6)))), 90);

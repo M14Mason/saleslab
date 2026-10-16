@@ -8,7 +8,7 @@ import { CATEGORY_LABEL } from "../../shared/scenarios";
 const blank = (): Scenario => ({
   id: `custom-${crypto.randomUUID().slice(0, 8)}`, title: "", category: "discovery", industry: "", objective: "", product: "",
   opener: "", winCondition: "", tips: [], custom: true,
-  persona: { name: "", title: "", company: "", personality: "", style: "", painPoints: [], goals: [], budget: "", timeline: "", hiddenMotivation: "", objections: [] },
+  persona: { name: "", gender: "female", title: "", company: "", personality: "", style: "", painPoints: [], goals: [], budget: "", timeline: "", hiddenMotivation: "", objections: [] },
 });
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean).slice(0, 6);
@@ -30,7 +30,7 @@ export default function Builder() {
     setBusy(true); setErr(null);
     try {
       const g = await generateScenario(brief);
-      setS((x) => ({ ...x, ...g, persona: g.persona, custom: true, id: x.id, category: x.category }));
+      setS((x) => ({ ...x, ...g, persona: { ...g.persona, voice: undefined, look: undefined }, custom: true, id: x.id, category: x.category }));
     } catch (e) {
       setErr(e instanceof ClaudeError ? e.message : "Couldn't generate. Try again.");
     } finally { setBusy(false); }
@@ -80,6 +80,11 @@ export default function Builder() {
         <h2 className="text-xl font-bold">The buyer</h2>
         <p className="text-sm text-mute">Make them fictional. Don't use real people.</p>
         <Field label="Name" value={s.persona.name} onChange={(v) => setP("name", v)} required />
+        <label className="flex flex-col gap-1"><span className="text-sm font-medium">Voice and face</span>
+          <select className="field" value={s.persona.gender} onChange={(e) => setP("gender", e.target.value as "male" | "female")}>
+            <option value="female">Woman</option><option value="male">Man</option>
+          </select>
+        </label>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label="Job title" value={s.persona.title} onChange={(v) => setP("title", v)} />
           <Field label="Company" value={s.persona.company} onChange={(v) => setP("company", v)} />

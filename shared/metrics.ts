@@ -1,9 +1,9 @@
 // Deterministic transcript analytics. Computed locally: instant, free, and testable.
 import type { Turn } from "./prompts";
+import { questionsIn } from "./questions";
 
 const FILLERS = ["um", "uh", "erm", "like", "you know", "basically", "actually", "literally", "kind of", "sort of", "i mean", "so yeah"];
 const OPEN_STARTS = /^(what|how|why|tell me|walk me|describe|explain|help me understand|in what way)/i;
-const CLOSED_STARTS = /^(do|does|did|is|are|was|were|can|could|would|will|have|has|should)\b/i;
 
 export type Metrics = {
   sellerWords: number;
@@ -37,12 +37,9 @@ export function countFillers(text: string): Record<string, number> {
   return out;
 }
 
-/** Speech transcripts often drop "?", so question-shaped openings count too. */
+/** Speech transcripts often drop "?", so question-shaped sentences count too. */
 export function splitQuestions(text: string): string[] {
-  return text
-    .split(/(?<=[?.!])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.endsWith("?") || OPEN_STARTS.test(s) || (CLOSED_STARTS.test(s) && /^\w+ (you|we|your|i|it|that|this|there|they)\b/i.test(s)));
+  return questionsIn(text);
 }
 
 export function analyze(turns: Turn[], durationSec = 0): Metrics {

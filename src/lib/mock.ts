@@ -67,7 +67,7 @@ export function mockScenario(brief: string) {
     winCondition: "The seller uncovers a real need and asks for a clear next step.",
     tips: ["Ask before you pitch", "Summarize their need", "Ask for a next step"],
     persona: {
-      name: "Jordan Lee", title: "Manager", company: "Example Co", personality: "Busy and skeptical",
+      name: "Jordan Lee", gender: "female" as const, title: "Manager", company: "Example Co", personality: "Busy and skeptical",
       style: "Short answers", painPoints: ["Too much manual work"], goals: ["Save time"], budget: "Small",
       timeline: "This quarter", hiddenMotivation: "Wants a promotion", objections: ["Too expensive", "Not now"],
     },

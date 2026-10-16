@@ -42,12 +42,18 @@ export type Settings = {
   defaultDifficulty: Difficulty;
   weeklyGoal: number;
   onboarded: boolean;
+  /** Extra voice depth in cents (0 normal, -200 much deeper). */
+  voiceDepth: number;
+  /** "smart" = Sonnet 5.5 (understands you better), "fast" = Haiku 5.5 (quicker, cheaper). */
+  brain: "smart" | "fast";
+  settingsVersion: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  voiceEngine: "auto", voice: "am_fenrir", speed: 1.08, pauseMs: 1600, autoListen: true,
+  voiceEngine: "auto", voice: "am_fenrir", speed: 1.0, pauseMs: 2000, autoListen: true,
   micDeviceId: null, theme: "system", reducedMotion: "system", liveCoaching: true,
   defaultDifficulty: "medium", weeklyGoal: 5, onboarded: false,
+  voiceDepth: -60, brain: "smart", settingsVersion: 3,
 };
 
 export type Data = {
@@ -76,20 +82,38 @@ function read(): Data {
   return cache;
 }
 
+/** Moves people still on old defaults to the new ones (keeps anything they changed themselves). */
+function upgradeSettings(s: Settings, from: number): Settings {
+  if (from < 3) {
+    if (s.speed === 1.08) s.speed = 1.0;          // old default felt rushed
+    if (s.pauseMs === 1600) s.pauseMs = 2000;     // old default ended turns too soon
+  }
+  s.settingsVersion = 3;
+  return s;
+}
+
+/** Scenarios saved before buyers had a gender get the current built-in version's look/voice, or a default. */
+function fixScenario(sc: Scenario): Scenario {
+  if (sc.persona?.gender) return sc;
+  const builtIn = SCENARIOS.find((b) => b.id === sc.id);
+  return builtIn ? { ...sc, persona: { ...builtIn.persona, ...sc.persona, gender: builtIn.persona.gender, look: builtIn.persona.look, voice: builtIn.persona.voice } }
+    : { ...sc, persona: { ...sc.persona, gender: "male" } };
+}
+
 function normalize(d: Partial<Data>): Data {
   return {
     version: 2,
     // Repair sessions from older/edited backups so a bad record can never crash a page.
     sessions: (Array.isArray(d.sessions) ? d.sessions : []).filter((x) => x && typeof x.id === "string").map((x) => ({
       ...x,
-      scenario: x.scenario && x.scenario.persona ? x.scenario : (SCENARIOS.find((sc) => sc.id === x.scenarioId) ?? SCENARIOS[0]),
+      scenario: fixScenario(x.scenario && x.scenario.persona ? x.scenario : (SCENARIOS.find((sc) => sc.id === x.scenarioId) ?? SCENARIOS[0])),
       turns: Array.isArray(x.turns) ? x.turns.filter((t) => t && typeof t.text === "string") : [],
       grading: x.grading ?? { status: "idle", error: null, attempts: 0, ms: null },
       perf: x.perf ?? { firstAudioMs: [], firstTokenMs: [] },
       report: x.report ?? null, metrics: x.metrics ?? null,
     })),
-    customScenarios: Array.isArray(d.customScenarios) ? d.customScenarios : [],
-    settings: { ...DEFAULT_SETTINGS, ...(d.settings ?? {}) },
+    customScenarios: (Array.isArray(d.customScenarios) ? d.customScenarios : []).map(fixScenario),
+    settings: upgradeSettings({ ...DEFAULT_SETTINGS, ...(d.settings ?? {}) }, d.settings?.settingsVersion ?? 1),
     achievements: d.achievements ?? {},
   };
 }

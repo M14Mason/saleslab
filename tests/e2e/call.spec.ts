@@ -262,3 +262,49 @@ test("round 2: opening an old ungraded call never spends credit by itself", asyn
   await expect(page.getByRole("img", { name: /Score 72/ })).toBeVisible({ timeout: 15_000 });
   expect(api.calls.grade).toBe(1);
 });
+
+test("round 3: saying the same line again after a failed reply sends it (was silently dropped)", async ({ page }) => {
+  const api = new MockClaude();
+  api.buyer = [{ status: 529 }, "Okay, I hear you now."];
+  await api.install(page);
+  await fakeVoice(page, { lines: ["How is your day going?"] });
+  await signedIn(page);
+  await startCall(page);
+  await expect(page.getByRole("alert").filter({ hasText: /overloaded/ })).toBeVisible({ timeout: 20_000 });
+  // Instead of tapping Retry, the user just says (types) the same thing again.
+  await page.getByRole("button", { name: "Type" }).click();
+  await page.getByLabel("Type your line").fill("How is your day going?");
+  await page.getByLabel("Type your line").press("Enter");
+  await expect(page.getByText("Okay, I hear you now.")).toBeVisible({ timeout: 15_000 });
+  expect(api.calls.buyer).toBe(2);
+  await page.getByRole("button", { name: /Show full transcript/ }).click();
+  await expect(page.getByLabel("Transcript").getByText("How is your day going?")).toHaveCount(1);
+});
+
+test("round 3: typing while the buyer is talking interrupts and sends", async ({ page }) => {
+  const api = new MockClaude();
+  api.buyer = [{ delayMs: 6000, text: "Let me finish my long story first." }, "Fine, you have the floor."];
+  await api.install(page);
+  await fakeVoice(page, { lines: ["First, quick question."] });
+  await signedIn(page);
+  await startCall(page);
+  await expect(page.getByText(/is thinking/)).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Type" }).click();
+  await page.getByLabel("Type your line").fill("Sorry to jump in, what do you sign with?");
+  await page.getByLabel("Type your line").press("Enter");
+  await expect(page.getByText("Fine, you have the floor.")).toBeVisible({ timeout: 15_000 });
+});
+
+test("round 3: a female buyer gets a female voice and face", async ({ page }) => {
+  const api = new MockClaude();
+  await api.install(page);
+  await fakeVoice(page, { lines: [] });
+  await signedIn(page, { autoListen: false });
+  await page.goto("#/practice/closing-hesitant");
+  await page.getByRole("button", { name: "Start call" }).click();
+  await page.waitForTimeout(1500);
+  const pitches = await page.evaluate(() => (window as unknown as { __spoken: { pitch: number }[] }).__spoken.map((s) => s.pitch));
+  expect(pitches.length).toBeGreaterThan(0);
+  // The test browser has no voices at all, so the app must shift pitch up for a woman.
+  for (const p of pitches) expect(p).toBeGreaterThan(1.1);
+});

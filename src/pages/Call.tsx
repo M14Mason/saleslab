@@ -8,6 +8,7 @@ import { unlockAudio } from "../speech/tts";
 import Waveform from "../components/Waveform";
 const GLCanvas = lazy(() => import("../gl/GLCanvas"));
 import Confetti from "../components/Confetti";
+import Face from "../components/Face";
 import { Modal } from "../components/ui";
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -168,8 +169,9 @@ function Live({ setup, resumeId }: { setup: CallSetup; resumeId: string | null }
             <Suspense fallback={null}>
               <GLCanvas variant="orb" level={c.level} mode={who === "idle" ? "idle" : who} className="absolute inset-0 w-full h-full rounded-full" scale={0.75} />
             </Suspense>
-            <span className="absolute inset-0 flex items-center justify-center display font-extrabold text-3xl text-ink">
-              {buyer.split(" ").map((w) => w[0]).slice(0, 2).join("")}
+            <span className="absolute inset-0 flex items-center justify-center">
+              <Face persona={setup.scenario.persona} size={118} level={c.state === "buyer" ? c.level : 0}
+                mood={c.outcome === "deal" ? "happy" : c.outcome === "no_deal" ? "upset" : c.state === "buyer" ? "talking" : c.state === "thinking" ? "thinking" : c.state === "listening" ? "listening" : "neutral"} />
             </span>
           </div>
           <p data-state-label role="status" aria-live="polite" className={`display text-2xl font-bold ${c.outcome === "deal" ? "text-good" : c.outcome === "no_deal" ? "text-bad" : ""}`}>
@@ -211,7 +213,7 @@ function Live({ setup, resumeId }: { setup: CallSetup; resumeId: string | null }
         )}
 
         <button className="text-sm text-mute w-fit" aria-expanded={showTranscript} onClick={() => setShowTranscript((v) => !v)}>
-          {showTranscript ? "Hide" : "Show"} full transcript ({c.turns.length + 1} lines)
+          {showTranscript ? "Hide" : "Show"} full transcript ({c.turns.length + 1} {c.turns.length ? "lines" : "line"})
         </button>
         {showTranscript && (
           <div className="panel p-4 max-h-[40dvh] overflow-y-auto flex flex-col gap-2 text-sm" aria-label="Transcript">

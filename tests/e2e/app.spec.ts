@@ -144,3 +144,18 @@ test("offline banner appears and history still works", async ({ page, context })
   await expect(page.getByText(/You're offline/)).toBeVisible();
   await context.setOffline(false);
 });
+
+test("round 3: Learn this field tab and random buyer", async ({ page }) => {
+  await fakeVoice(page);
+  await signedIn(page);
+  await page.goto("#/practice/financial-plan-close");
+  await expect(page.getByRole("heading", { name: "Close a financial plan" })).toBeVisible();
+  await page.getByRole("tab", { name: "Learn this field" }).click();
+  await expect(page.getByRole("heading", { name: "What this is used for" })).toBeVisible();
+  await expect(page.getByText("Financial advisor / planner (CFP)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Lines to try" })).toBeVisible();
+  await page.goto("#/practice");
+  await page.getByRole("button", { name: "Random buyer" }).click();
+  await expect(page).toHaveURL(/#\/practice\/[a-z-]+$/);
+  await expect(page.getByRole("tab", { name: "Practice" })).toBeVisible();
+});

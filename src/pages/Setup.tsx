@@ -5,6 +5,9 @@ import { useEntrance } from "../lib/useGsap";
 import { unlockAudio } from "../speech/tts";
 import { CATEGORY_LABEL, findScenario, type Difficulty } from "../../shared/scenarios";
 import { Modal, Segmented, Tip, Toggle } from "../components/ui";
+import Face from "../components/Face";
+import { guideFor } from "../../shared/guides";
+import type { Scenario } from "../../shared/scenarios";
 import type { CallSetup } from "../call/useCall";
 
 export default function Setup() {
@@ -20,6 +23,7 @@ export default function Setup() {
   const [surprise, setSurprise] = useState(false);
   const [limit, setLimit] = useState<"none" | "120" | "300">("none");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [tab, setTab] = useState<"play" | "learn">(params.get("tab") === "learn" ? "learn" : "play");
   const ref = useRef<HTMLDivElement>(null);
   useEntrance(ref, [id]);
   if (!scenario) return <Navigate to="/practice" replace />;
@@ -48,9 +52,23 @@ export default function Setup() {
         <p className="text-mute">You're selling: {scenario.product}</p>
       </header>
 
+      <div role="tablist" aria-label="Scenario sections" className="flex gap-2 border-b border-line">
+        {([["play", "Practice"], ["learn", "Learn this field"]] as const).map(([id, label]) => (
+          <button key={id} role="tab" id={`tab-${id}`} aria-selected={tab === id} aria-controls={`panel-${id}`}
+            onClick={() => setTab(id)}
+            className={`px-4 py-3 -mb-px border-b-2 font-semibold ${tab === id ? "border-brass text-ink" : "border-transparent text-mute hover:text-ink"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "learn" ? (
+        <div role="tabpanel" id="panel-learn" aria-labelledby="tab-learn"><Learn scenario={scenario} /></div>
+      ) : (
+      <div role="tabpanel" id="panel-play" aria-labelledby="tab-play" className="flex flex-col gap-5">
       <section data-anim className="panel p-5 flex flex-col gap-3" aria-label="Your buyer">
         <div className="flex items-center gap-3">
-          <span aria-hidden className="w-12 h-12 rounded-full bg-raised border-2 border-buyer text-ink flex items-center justify-center display font-bold text-lg">{p.name.replace(/"[^"]*"/g, "").trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("")}</span>
+          <Face persona={p} size={72} className="shrink-0" />
           <div>
             <p className="font-semibold">{p.name}</p>
             <p className="text-sm text-mute">{p.title}, {p.company}</p>
@@ -89,6 +107,9 @@ export default function Setup() {
         </section>
       )}
 
+      </div>
+      )}
+
       <div data-anim className="flex flex-wrap gap-3 sticky bottom-20 md:bottom-0 -mx-4 px-4 py-3 bg-bg/90 backdrop-blur border-t border-line md:border-0 md:mx-0 md:px-0">
         <button className="btn btn-primary text-lg flex-1 md:flex-none md:px-10" onClick={start}>Start call</button>
         {scenario.custom && <>
@@ -105,6 +126,43 @@ export default function Setup() {
           <button className="btn btn-danger" onClick={() => { db.deleteScenario(scenario.id); nav("/practice"); }}>Delete scenario</button>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function Learn({ scenario }: { scenario: Scenario }) {
+  const g = guideFor(scenario);
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="panel p-5 flex flex-col gap-2">
+        <h2 className="text-xl font-bold">What this is used for</h2>
+        <p>{g.usedFor}</p>
+        <div className="flex flex-wrap gap-2 mt-1" aria-label="Jobs that use this">
+          {g.careers.map((c) => <span key={c} className="badge">{c}</span>)}
+        </div>
+      </section>
+      <section className="panel p-5">
+        <h2 className="text-xl font-bold mb-3">How to win this call</h2>
+        <ol className="flex flex-col gap-3">
+          {g.steps.map((st, i) => (
+            <li key={st.title} className="flex gap-3">
+              <span className="display font-extrabold text-brass text-lg w-6 shrink-0">{i + 1}</span>
+              <span><b>{st.title}.</b> <span className="text-mute">{st.detail}</span></span>
+            </li>
+          ))}
+        </ol>
+      </section>
+      <section className="panel p-5">
+        <h2 className="text-xl font-bold mb-3">Lines to try</h2>
+        <ul className="flex flex-col gap-2">{g.phrases.map((ph) => <li key={ph} className="inset p-3 text-you">"{ph}"</li>)}</ul>
+      </section>
+      <section className="panel p-5">
+        <h2 className="text-xl font-bold mb-2">Common mistakes</h2>
+        <ul className="list-disc pl-5 flex flex-col gap-1">{g.mistakes.map((m) => <li key={m}>{m}</li>)}</ul>
+      </section>
+      <section className="panel p-5 border-brass">
+        <p><b className="text-brass">Pro tip:</b> {g.proTip}</p>
+      </section>
     </div>
   );
 }

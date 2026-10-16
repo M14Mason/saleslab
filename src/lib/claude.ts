@@ -1,7 +1,7 @@
 // Direct browser -> Anthropic client. Streaming, timeouts, cancellation, typed errors, mock mode.
 import { z } from "zod";
 import {
-  buildGraderPrompt, buyerSystemPrompt, GeneratedScenarioSchema, GRADER_SYSTEM, isRepeat, parseOutcome,
+  buildGraderPrompt, buyerSystemPrompt, callMemory, GeneratedScenarioSchema, GRADER_SYSTEM, isRepeat, parseOutcome,
   REPORT_JSON_SCHEMA, ReportSchema, SCENARIO_JSON_SCHEMA, sanitizeReport, toClaudeMessages,
   type Report, type Turn,
 } from "../../shared/prompts";
@@ -10,7 +10,8 @@ import { mockBuyerReply, mockReport, mockScenario } from "./mock";
 import { log } from "./log";
 
 export const CONFIG = {
-  buyer: { model: "claude-haiku-5-5", maxTokens: 400, effort: "low", timeoutMs: 25_000 },
+  // Smart: Sonnet 5.5 understands messy speech and tracks the conversation far better. Fast: Haiku 5.5.
+  buyer: { model: "claude-sonnet-5-5", fastModel: "claude-haiku-5-5", maxTokens: 500, effort: "low", timeoutMs: 30_000 },
   grader: { model: "claude-sonnet-5-5", maxTokens: 16_000, effort: "medium", timeoutMs: 120_000 },
   generator: { model: "claude-haiku-5-5", maxTokens: 2_000, effort: "low", timeoutMs: 40_000 },
 };
@@ -68,14 +69,23 @@ async function post(body: Record<string, unknown>, signal: AbortSignal | undefin
 }
 
 /** Reads an SSE stream, calling onText for each text delta. Returns full text + stop reason. */
-async function readStream(res: Response, onText: (t: string) => void, signal?: AbortSignal): Promise<{ text: string; stop: string | null }> {
+async function readStream(res: Response, onText: (t: string) => void, signal?: AbortSignal, idleMs = 20_000): Promise<{ text: string; stop: string | null }> {
   const reader = res.body!.getReader();
   const dec = new TextDecoder();
   let buf = "", text = "", stop: string | null = null;
   try {
     for (;;) {
       if (signal?.aborted) throw new ClaudeError("aborted", "Cancelled.");
-      const { done, value } = await reader.read();
+      // Idle watchdog: a connection that stops sending mid-reply must not hang the call forever.
+      let idle: ReturnType<typeof setTimeout> | undefined;
+      const stalled = new Promise<never>((_, rej) => { idle = setTimeout(() => rej(new ClaudeError("timeout", "The reply stalled. Tap Retry.")), idleMs); });
+      const onAbort = () => { void reader.cancel().catch(() => {}); };
+      signal?.addEventListener("abort", onAbort, { once: true });
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try { chunk = await Promise.race([reader.read(), stalled]); }
+      finally { clearTimeout(idle); signal?.removeEventListener("abort", onAbort); }
+      if (signal?.aborted) throw new ClaudeError("aborted", "Cancelled.");
+      const { done, value } = chunk;
       if (done) break;
       buf += dec.decode(value, { stream: true });
       let i: number;
@@ -91,10 +101,11 @@ async function readStream(res: Response, onText: (t: string) => void, signal?: A
       }
     }
   } catch (e) {
+    void reader.cancel().catch(() => {}); // close the connection on any failure (stall, abort, drop)
     if (e instanceof ClaudeError) throw e;
     throw new ClaudeError(signal?.aborted ? "aborted" : "network", signal?.aborted ? "Cancelled." : "Connection dropped mid-reply. Retry.");
   } finally {
-    reader.releaseLock();
+    try { reader.releaseLock(); } catch { /* a cancelled read may still be pending */ }
   }
   return { text, stop };
 }
@@ -107,6 +118,8 @@ export type BuyerResult = { reply: string; outcome: "deal" | "no_deal" | null; f
  */
 export async function buyerTurn(args: {
   scenario: Scenario; difficulty: Difficulty; turns: Turn[]; surprise?: boolean;
+  /** "smart" (default) = Sonnet 5.5, "fast" = Haiku 5.5. */
+  brain?: "smart" | "fast";
   onText?: (delta: string) => void;
   /** Called when streamed text must be thrown away (empty/repeated draft); stop speaking it. */
   onDiscard?: () => void;
@@ -120,18 +133,20 @@ export async function buyerTurn(args: {
     return { reply: p.text, outcome: p.outcome, firstTokenMs: performance.now() - t0, totalMs: performance.now() - t0 };
   }
   const cfg = CONFIG.buyer;
+  const fast = args.brain === "fast";
+  const model = fast ? cfg.fastModel : cfg.model;
   for (let attempt = 0; attempt < 2; attempt++) {
     let first = 0;
     const nudge = attempt > 0 ? "\n\nYour previous draft repeated an earlier line or was empty. Say something new that moves the conversation forward." : "";
     const res = await post({
-      model: cfg.model,
+      model,
       max_tokens: cfg.maxTokens,
       stream: true,
-      // Root cause of the old "Talk to me." loop: Haiku 5.5 thinks by default and thinking
-      // consumed the whole token budget, leaving no text. Roleplay needs speed, not deliberation.
-      thinking: { type: "disabled" },
+      // No up-front thinking: thinking ate the token budget (the old "Talk to me." loop) and slows replies.
+      // Haiku 5.5 takes "disabled"; Sonnet 5.5 rejects that and uses "between_tools" (no tools here = no thinking).
+      thinking: { type: fast ? "disabled" : "between_tools" },
       output_config: { effort: cfg.effort },
-      system: buyerSystemPrompt(args.scenario, args.difficulty, { surprise: args.surprise }) + nudge,
+      system: buyerSystemPrompt(args.scenario, args.difficulty, { surprise: args.surprise, memory: callMemory(args.turns) }) + nudge,
       messages: toClaudeMessages(args.turns),
     }, args.signal, cfg.timeoutMs);
     const { text } = await readStream(res, (d) => { if (!first) first = performance.now() - t0; args.onText?.(d); }, args.signal);
@@ -195,7 +210,7 @@ export async function generateScenario(brief: string, signal?: AbortSignal): Pro
 /** Cheap key check: a 1-token request. */
 export async function testKey(): Promise<void> {
   if (isMock()) return;
-  const res = await post({ model: CONFIG.buyer.model, max_tokens: 5, thinking: { type: "disabled" }, messages: [{ role: "user", content: "Hi" }] }, undefined, 15_000);
+  const res = await post({ model: CONFIG.buyer.fastModel, max_tokens: 5, thinking: { type: "disabled" }, messages: [{ role: "user", content: "Hi" }] }, undefined, 15_000);
   await res.json();
 }
 

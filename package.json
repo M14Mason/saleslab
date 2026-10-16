@@ -9,6 +9,8 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@dicebear/avataaars": "^9.4.2",
+    "@dicebear/core": "^9.4.3",
     "gsap": "^3.15.0",
     "kokoro-js": "^1.2.1",
     "react": "^19.3.0",

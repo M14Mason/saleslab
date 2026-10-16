@@ -6,9 +6,14 @@ import { log } from "../lib/log";
 import { analyze, liveHint } from "../../shared/metrics";
 import type { Turn } from "../../shared/prompts";
 import { MAX_TURNS } from "../../shared/limits";
-import type { Difficulty, Scenario } from "../../shared/scenarios";
+import { voiceFor, type Difficulty, type Scenario } from "../../shared/scenarios";
 import { isIOS, Listener, MicMeter, sttSupported, type SttError } from "../speech/stt";
 import { preloadNatural, Speaker } from "../speech/tts";
+
+const estimateSpeechMs = (text: string) => 1500 + text.split(/\s+/).length * 520;
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | void> {
+  return Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))]);
+}
 
 export type CallState = "idle" | "buyer" | "listening" | "thinking" | "paused" | "error" | "ended";
 
@@ -131,7 +136,7 @@ export function useCall() {
     try {
       const sellerCount = at.filter((t) => t.role === "seller").length;
       const res = await buyerTurn({
-        scenario: cfg.scenario, difficulty: cfg.difficulty, turns: at,
+        scenario: cfg.scenario, difficulty: cfg.difficulty, turns: at, brain: db.settings().brain,
         surprise: cfg.surprise && sellerCount >= 2,
         signal: ctrl.signal,
         onText: (d) => {
@@ -152,7 +157,10 @@ export function useCall() {
       if (res.outcome) { outcomeRef.current = res.outcome; setOutcome(res.outcome); persist((s) => { s.outcome = res.outcome; }); }
       setState("buyer");
       setThinkingSince(null);
-      await sp.flush();
+      // The reply text is complete: release the request lock BEFORE speaking, so a stuck
+      // audio device can never block your next turn (old bug: voice and typing both stopped sending).
+      if (inflight.current === ctrl) inflight.current = null;
+      await withTimeout(sp.flush(), estimateSpeechMs(res.reply) + 4000);
       if (sp.firstAudioAt && finalAt.current) {
         const ms = Math.round(sp.firstAudioAt - finalAt.current);
         persist((s) => { s.perf.firstAudioMs.push(ms); });
@@ -179,10 +187,19 @@ export function useCall() {
 
   const submitSeller = useCallback(async (text: string) => {
     const t = text.trim();
-    if (!t || !setup.current || outcomeRef.current) return;
-    if (inflight.current) return;                        // ignore double submits
+    if (!t || !setup.current) return;
+    if (outcomeRef.current) { setError({ message: "The call is over. Tap Get coached for your report.", retry: null }); return; }
+    // Talking or typing while the buyer is mid-reply counts as interrupting them, never a silent drop.
+    if (inflight.current) { inflight.current.abort(); inflight.current = null; }
+    if (st.current === "buyer" || st.current === "thinking") {
+      speaker.current?.stop(); setStreaming(""); setThinkingSince(null);
+      const last = turnsRef.current.at(-1);
+      if (last?.role === "buyer") setTurnsBoth([...turnsRef.current.slice(0, -1), { ...last, interrupted: true }]);
+    }
+    setError(null);
     const prev = turnsRef.current;
-    if (prev.at(-1)?.role === "seller" && prev.at(-1)?.text === t) return; // exact duplicate submit
+    // Same line again right after a failed reply: that's a retry, not a new turn (old bug: it was silently ignored).
+    if (prev.at(-1)?.role === "seller" && prev.at(-1)?.text.trim().toLowerCase() === t.toLowerCase()) { await requestBuyer(); return; }
     if (prev.filter((x) => x.role === "seller").length >= MAX_TURNS) {
       setError({ message: "Turn limit reached. End the call to get coached.", retry: null });
       return;
@@ -202,7 +219,11 @@ export function useCall() {
     const s = db.settings();
     preloadNatural(s.voiceEngine);
     speaker.current?.dispose();
-    speaker.current = new Speaker({ engine: s.voiceEngine, voice: s.voice, speed: s.speed }, {
+    const v = voiceFor(cfg.scenario.persona);
+    speaker.current = new Speaker({
+      engine: s.voiceEngine, voice: v.natural, speed: s.speed, gender: cfg.scenario.persona.gender,
+      pitch: v.pitch, rate: v.rate, detune: v.detune, depth: s.voiceDepth, seed: cfg.scenario.persona.name,
+    }, {
       onLevel: (v) => { if (st.current === "buyer") setLevel(v); },
     });
     speaker.current.unlock(); // must run inside the tap that started the call

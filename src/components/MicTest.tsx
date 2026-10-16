@@ -3,6 +3,7 @@ import { db, useData } from "../lib/db";
 import { isIOS, listMics, Listener, MicMeter, sttSupported, type MicStatus } from "../speech/stt";
 import { Speaker } from "../speech/tts";
 import Waveform from "./Waveform";
+import { SCENARIOS, voiceFor } from "../../shared/scenarios";
 
 const STATUS_TEXT: Record<MicStatus, string> = {
   ok: "Sounds good.",
@@ -58,10 +59,13 @@ export default function MicTest() {
     l.start();
   }
 
-  function testSpeaker() {
-    const sp = new Speaker({ engine: settings.voiceEngine, voice: settings.voice, speed: settings.speed });
+  function testSpeaker(who: "male" | "female") {
+    const sc = SCENARIOS.find((x) => x.id === (who === "male" ? "wolf-pen" : "closing-hesitant"))!;
+    const v = voiceFor(sc.persona);
+    const sp = new Speaker({ engine: settings.voiceEngine, voice: v.natural, speed: settings.speed, gender: sc.persona.gender,
+      pitch: v.pitch, rate: v.rate, detune: v.detune, depth: settings.voiceDepth, seed: sc.persona.name });
     sp.unlock();
-    void sp.say("Alright, kid. Here's the pen. Sell me this pen.").then(() => setTimeout(() => sp.dispose(), 300));
+    void sp.say(sc.opener).then(() => setTimeout(() => sp.dispose(), 300));
   }
 
   useEffect(() => () => { stop(); listener.current?.cancel(); }, []);
@@ -89,7 +93,8 @@ export default function MicTest() {
       )}
       <div className="flex flex-wrap gap-2">
         {sttSupported() && <button className="btn btn-quiet btn-sm" onClick={testStt} disabled={sttState === "listening"}>{sttState === "listening" ? "Listening..." : "Test transcription"}</button>}
-        <button className="btn btn-quiet btn-sm" onClick={testSpeaker}>Test speaker</button>
+        <button className="btn btn-quiet btn-sm" onClick={() => testSpeaker("male")}>Test a male buyer</button>
+        <button className="btn btn-quiet btn-sm" onClick={() => testSpeaker("female")}>Test a female buyer</button>
       </div>
       {sttState !== "idle" && (
         <p className="text-sm" aria-live="polite">

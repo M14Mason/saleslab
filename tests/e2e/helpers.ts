@@ -88,7 +88,7 @@ export async function fakeVoice(page: Page, opts: { lines?: string[]; noRecognit
     const synth = {
       speaking: false,
       speak(u: SpeechSynthesisUtterance) {
-        if (u.text.trim()) (w.__spoken as { text: string; t: number }[]).push({ text: u.text, t: performance.now() });
+        if (u.text.trim()) (w.__spoken as { text: string; t: number; pitch: number }[]).push({ text: u.text, t: performance.now(), pitch: u.pitch });
         setTimeout(() => u.onend?.(new Event("end") as SpeechSynthesisEvent), Math.min(300, u.text.length * 6));
       },
       cancel() {}, getVoices: () => [], addEventListener() {}, pause() {}, resume() {},
@@ -142,7 +142,7 @@ const GEN = {
   title: "Meal kit for a busy student", industry: "Food", objective: "Find the need and close a trial.", product: "Meal kits, $30/week",
   opener: "Yeah? I've got class in ten minutes.", winCondition: "Seller ties it to time savings and asks for a trial.",
   tips: ["Ask about their schedule", "Talk about time", "Offer a trial"],
-  persona: { name: "Sam Rivera", title: "Student", company: "State University", personality: "Rushed", style: "Short answers",
+  persona: { name: "Sam Rivera", gender: "male", title: "Student", company: "State University", personality: "Rushed", style: "Short answers",
     painPoints: ["No time to cook"], goals: ["Eat better"], budget: "$25 a week", timeline: "Now", hiddenMotivation: "Parents nag about diet",
     objections: ["Too expensive", "I can just eat ramen"] },
 };

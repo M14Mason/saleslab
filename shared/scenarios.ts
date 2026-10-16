@@ -1,13 +1,28 @@
 // Scenario library. Every persona is an ORIGINAL fictional character.
 // "The Wolf" is inspired by publicly taught sales concepts, not a real person.
+import { MORE } from "./scenarios-more";
 
 export type Difficulty = "easy" | "medium" | "hard";
 export type Category =
   | "pen" | "cold-call" | "discovery" | "objections" | "demo"
-  | "negotiation" | "closing" | "executive" | "technical" | "procurement" | "gatekeeper";
+  | "negotiation" | "closing" | "executive" | "technical" | "procurement" | "gatekeeper"
+  | "financial-planning" | "insurance" | "real-estate" | "retail" | "retention" | "service-recovery"
+  | "fundraising" | "recruiting" | "self-pitch" | "partnerships" | "door-to-door";
+
+/** How the buyer looks (illustrated face). Unset fields are picked from the name + gender. */
+export type Look = {
+  top?: string; skin?: string; hairColor?: string; facialHair?: string | null;
+  clothing?: string; accessories?: string | null; age?: "young" | "adult" | "senior";
+};
+
+/** How the buyer sounds. pitch/rate apply to device voices; voice + detune to the natural voice. */
+export type VoiceProfile = { natural: string; pitch: number; rate: number; detune: number };
 
 export type Persona = {
   name: string;
+  gender: "male" | "female";
+  look?: Look;
+  voice?: VoiceProfile;
   title: string;
   company: string;
   personality: string;
@@ -35,6 +50,17 @@ export type Scenario = {
 };
 
 export const CATEGORY_LABEL: Record<Category, string> = {
+  "financial-planning": "Financial planning",
+  insurance: "Insurance",
+  "real-estate": "Real estate",
+  retail: "Retail",
+  retention: "Retention",
+  "service-recovery": "Angry customer",
+  fundraising: "Fundraising",
+  recruiting: "Recruiting",
+  "self-pitch": "Sell yourself",
+  partnerships: "Partnerships",
+  "door-to-door": "Door to door",
   pen: "Pen challenge",
   "cold-call": "Cold call",
   discovery: "Discovery",
@@ -48,7 +74,7 @@ export const CATEGORY_LABEL: Record<Category, string> = {
   gatekeeper: "Gatekeeper",
 };
 
-export const SCENARIOS: Scenario[] = [
+const CORE: Scenario[] = [
   {
     id: "wolf-pen",
     title: "Sell me this pen",
@@ -57,7 +83,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Uncover why he needs a pen, tie the pen to that need, and close.",
     product: "A plain ballpoint pen",
     persona: {
-      name: "Vince \"The Wolf\" Marchetti",
+      name: "Vince \"The Wolf\" Marchetti", gender: "male", look: { top: "theCaesarAndSidePart", hairColor: "2c1b18", facialHair: "beardLight", clothing: "blazerAndShirt", skin: "edb98a" }, voice: { natural: "am_fenrir", pitch: 0.78, rate: 1.0, detune: -140 },
       title: "Head of the trading floor",
       company: "Marchetti Capital",
       personality: "Cocky, impatient, funny, respects certainty",
@@ -81,7 +107,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Earn 30 more seconds, find a pain, and book a 20-minute meeting.",
     product: "RouteIQ, route-planning software that cuts fuel costs",
     persona: {
-      name: "Dana Okafor", title: "Operations Manager", company: "Coastline Freight",
+      name: "Dana Okafor", gender: "female", look: { top: "bun", skin: "ae5d29", clothing: "collarAndSweater" }, title: "Operations Manager", company: "Coastline Freight",
       personality: "Busy, skeptical of cold calls, fair if you're relevant",
       style: "Clipped answers, multitasking, warms up only to specifics",
       painPoints: ["Fuel costs up 18% this year", "Drivers complain about bad routes"],
@@ -101,7 +127,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Ask deep questions to uncover the real problem and its cost before pitching.",
     product: "BookWell, online appointment booking with reminders",
     persona: {
-      name: "Dr. Priya Raman", title: "Owner", company: "Raman Family Dental",
+      name: "Dr. Priya Raman", gender: "female", look: { top: "straight01", skin: "d08b5b", clothing: "blazerAndSweater", accessories: "prescription02" }, title: "Owner", company: "Raman Family Dental",
       personality: "Friendly but guarded, hates being sold to",
       style: "Gives short answers to vague questions, opens up to specific ones",
       painPoints: ["Front desk overwhelmed by calls", "No-shows cost about $4,000 a month"],
@@ -121,7 +147,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Handle back-to-back objections without getting defensive and still close.",
     product: "A 12-month gym membership at $59 a month",
     persona: {
-      name: "Marcus Bell", title: "Prospective member", company: "N/A",
+      name: "Marcus Bell", gender: "male", look: { top: "shortCurly", skin: "614335", clothing: "hoodie", facialHair: null, age: "young" }, title: "Prospective member", company: "N/A",
       personality: "Interested but full of reasons not to buy",
       style: "Casual, throws a new objection every time one is handled",
       painPoints: ["Wants to get in shape for a wedding in 4 months"],
@@ -141,7 +167,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Run a demo that connects features to her stated needs, not a feature tour.",
     product: "ClipFlow, AI video editing for social media",
     persona: {
-      name: "Sofia Alvarez", title: "Creative Director", company: "Brightside Agency",
+      name: "Sofia Alvarez", gender: "female", look: { top: "curvy", skin: "edb98a", hairColor: "4a312c", clothing: "blazerAndShirt", accessories: "round" }, title: "Creative Director", company: "Brightside Agency",
       personality: "Sharp, visual, gets bored by feature lists",
       style: "Interrupts with 'so what?' when something isn't relevant",
       painPoints: ["Editors spend 6 hours per client video", "Missing posting deadlines"],
@@ -161,7 +187,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Protect price by trading value, not caving. Find a deal both sides accept.",
     product: "Annual renewal of a $48,000 analytics platform",
     persona: {
-      name: "Greg Holloway", title: "VP Finance", company: "Northwind Retail",
+      name: "Greg Holloway", gender: "male", look: { top: "sides", skin: "ffdbb4", facialHair: "moustacheFancy", clothing: "blazerAndShirt", age: "senior" }, voice: { natural: "am_onyx", pitch: 0.8, rate: 0.95, detune: -100 }, title: "VP Finance", company: "Northwind Retail",
       personality: "Tough, numbers-first, bluffs about competitors",
       style: "Anchors hard, uses silence, tests if you'll fold",
       painPoints: ["CFO cut every vendor budget 15%"],
@@ -181,7 +207,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Spot buying signals, handle the last concern, and ask for the sale.",
     product: "Solar panel installation, $14,000 after incentives",
     persona: {
-      name: "Linda Park", title: "Homeowner", company: "N/A",
+      name: "Linda Park", gender: "female", look: { top: "bob", skin: "ffdbb4", hairColor: "2c1b18", clothing: "shirtScoopNeck" }, title: "Homeowner", company: "N/A",
       personality: "Likes the idea, nervous about commitment",
       style: "Polite, keeps saying 'it sounds great, but...'",
       painPoints: ["Electric bill is $280 a month"],
@@ -201,7 +227,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Speak in business outcomes, be concise, and earn a follow-up.",
     product: "A predictive maintenance platform",
     persona: {
-      name: "Eleanor Voss", title: "CFO", company: "Voss Industrial",
+      name: "Eleanor Voss", gender: "female", look: { top: "miaWallace", skin: "ffdbb4", hairColor: "b58143", clothing: "blazerAndShirt", age: "senior" }, voice: { natural: "bf_emma", pitch: 0.95, rate: 1.05, detune: -40 }, title: "CFO", company: "Voss Industrial",
       personality: "Brilliant, impatient, allergic to jargon",
       style: "Cuts off rambling, asks 'what's the ROI?'",
       painPoints: ["Unplanned downtime cost $2.1M last year"],
@@ -221,7 +247,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Answer technical concerns honestly, admit what you don't know, and propose a technical deep-dive.",
     product: "An API platform for identity verification",
     persona: {
-      name: "Raj Mehta", title: "CTO", company: "Ledgerline",
+      name: "Raj Mehta", gender: "male", look: { top: "shortFlat", skin: "d08b5b", facialHair: "beardMedium", clothing: "shirtCrewNeck", accessories: "prescription01" }, title: "CTO", company: "Ledgerline",
       personality: "Precise, skeptical, hates hand-waving",
       style: "Asks pointed questions about security, uptime, and integration",
       painPoints: ["Current vendor had two outages this quarter"],
@@ -241,7 +267,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Navigate procurement rules, payment terms, and paperwork without losing the deal.",
     product: "Classroom laptops, 200 units",
     persona: {
-      name: "Theresa Nguyen", title: "Procurement Officer", company: "Lakeview School District",
+      name: "Theresa Nguyen", gender: "female", look: { top: "straightAndStrand", skin: "ffdbb4", hairColor: "2c1b18", clothing: "blazerAndSweater", accessories: "kurt" }, title: "Procurement Officer", company: "Lakeview School District",
       personality: "Process-driven, neutral, not swayed by hype",
       style: "Asks for documents, cites policy, wants net-60 terms",
       painPoints: ["Budget year ends in 6 weeks"],
@@ -261,7 +287,7 @@ export const SCENARIOS: Scenario[] = [
     objective: "Earn the assistant's help to reach the decision-maker.",
     product: "Property management software",
     persona: {
-      name: "Kevin Osei", title: "Executive Assistant", company: "Summit Properties",
+      name: "Kevin Osei", gender: "male", look: { top: "shortRound", skin: "614335", facialHair: null, clothing: "collarAndSweater", age: "young" }, title: "Executive Assistant", company: "Summit Properties",
       personality: "Protective, polite, trained to block salespeople",
       style: "Asks 'what is this regarding?' and 'is he expecting your call?'",
       painPoints: ["His boss complains about maintenance request chaos"],
@@ -274,6 +300,16 @@ export const SCENARIOS: Scenario[] = [
     tips: ["Be respectful and honest", "Ask for his help", "Find what's in it for him"],
   },
 ];
+
+export const SCENARIOS: Scenario[] = [...CORE, ...MORE];
+
+/** Default voice when a scenario (e.g. a custom one) doesn't set one. Deeper, slower defaults sound more natural. */
+export function voiceFor(p: Persona): VoiceProfile {
+  if (p.voice) return p.voice;
+  return p.gender === "female"
+    ? { natural: "af_heart", pitch: 1.0, rate: 1.0, detune: 0 }
+    : { natural: "am_fenrir", pitch: 0.82, rate: 0.98, detune: -100 };
+}
 
 export const findScenario = (id: string, custom: Scenario[] = []) =>
   [...SCENARIOS, ...custom].find((s) => s.id === id);

@@ -4,7 +4,7 @@ import { db, useData } from "../lib/db";
 import { removeDemo, seedDemo } from "../lib/demo";
 import { download } from "../lib/export";
 import { recentEvents } from "../lib/log";
-import { canUseNatural, naturalStatus, preloadNatural, VOICES } from "../speech/tts";
+import { canUseNatural, naturalStatus, preloadNatural } from "../speech/tts";
 import MicTest from "../components/MicTest";
 import { Modal, Segmented, Toggle } from "../components/ui";
 
@@ -71,11 +71,11 @@ export default function Settings() {
             {s.voiceEngine !== "system" && ` Natural voice: ${voiceState === "ready" ? "ready" : voiceState === "failed" ? "couldn't load on this device" : canUseNatural() || s.voiceEngine === "natural" ? "downloading in the background" : "skipped on this device"}.`}
           </p>
         </div>
-        {s.voiceEngine !== "system" && (
-          <label className="flex flex-col gap-1"><span className="font-medium">Natural voice</span>
-            <select className="field" value={s.voice} onChange={(e) => set({ voice: e.target.value })}>{VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}</select>
-          </label>
-        )}
+        <label className="flex flex-col gap-1">
+          <span className="font-medium">Voice depth: <span className="num">{s.voiceDepth === 0 ? "normal" : s.voiceDepth > -90 ? "a little deeper" : s.voiceDepth > -160 ? "deeper" : "deepest"}</span></span>
+          <input type="range" min={-220} max={0} step={20} value={s.voiceDepth} onChange={(e) => set({ voiceDepth: Number(e.target.value) })} className="accent-[var(--brass)] h-10" aria-label="Voice depth" />
+          <span className="text-sm text-mute">Every buyer has their own voice that matches their face. This makes all of them deeper or lighter.</span>
+        </label>
         <label className="flex flex-col gap-1">
           <span className="font-medium">Speaking speed: <span className="num">{s.speed.toFixed(2)}x</span></span>
           <input type="range" min={0.8} max={1.4} step={0.02} value={s.speed} onChange={(e) => set({ speed: Number(e.target.value) })} className="accent-[var(--brass)] h-10" />
@@ -89,6 +89,10 @@ export default function Settings() {
           <input type="range" min={800} max={3500} step={100} value={s.pauseMs} onChange={(e) => set({ pauseMs: Number(e.target.value) })} className="accent-[var(--brass)] h-10" />
           <span className="text-sm text-mute">Raise this if the buyer cuts you off mid-thought. You can always tap Send to finish early.</span>
         </label>
+        <div className="flex flex-col gap-2"><span className="font-medium">Buyer brain</span>
+          <Segmented label="Buyer brain" value={s.brain} onChange={(v) => set({ brain: v })} options={[{ id: "smart", label: "Smart (recommended)" }, { id: "fast", label: "Fast" }]} />
+          <span className="text-sm text-mute">Smart uses Claude Sonnet: much better at understanding messy speech and remembering the whole call. Fast uses Claude Haiku: answers a bit quicker and costs less.</span>
+        </div>
         <Toggle checked={s.autoListen} onChange={(v) => set({ autoListen: v })} label="Auto-listen" desc="Mic turns on after the buyer finishes talking." />
         <Toggle checked={s.liveCoaching} onChange={(v) => set({ liveCoaching: v })} label="Live coaching by default" desc="Short tips during practice calls." />
         <div className="flex flex-col gap-2"><span className="font-medium">Default difficulty</span>
